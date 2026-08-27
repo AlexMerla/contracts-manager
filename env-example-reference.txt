@@ -1,0 +1,43 @@
+# --- Database ---
+# PostgreSQL connection string (Neon or Supabase free tier). Used by Prisma
+# for all synchronous reads/writes -- see spec section 3, section 11.
+DATABASE_URL=
+
+# --- Auth.js (NextAuth) -- Flow A: user login only ---
+# Secret used by Auth.js to sign/encrypt session tokens and JWTs.
+NEXTAUTH_SECRET=
+
+# Google OAuth credentials for Flow A (per-user login via Auth.js). These are
+# completely independent from the Google Master connection below -- never
+# share code, tokens, or sessions between the two flows (spec section 4.3).
+GOOGLE_LOGIN_CLIENT_ID=
+GOOGLE_LOGIN_CLIENT_SECRET=
+
+# --- Google Master connection -- Flow B: Drive/Calendar backup ---
+# OAuth credentials for the single business Google account, connected once by
+# a `super` user through a separate, manual OAuth flow (not Auth.js). Its
+# refresh_token is stored encrypted in the `google_connection` table and used
+# for every Drive upload / Calendar event, regardless of who is logged in
+# (spec section 4.3). Must stay distinct from the login credentials above.
+GOOGLE_MASTER_CLIENT_ID=
+GOOGLE_MASTER_CLIENT_SECRET=
+
+# --- Email delivery ---
+# Resend API key used to send the generated contract by email (spec section 3, section 4.2).
+RESEND_API_KEY=
+
+# --- Deposit threshold configuration ---
+# Ported from the legacy `calculateFinalTotals` logic (spec section 6.4). Used to
+# compute the default deposit proposed at contract confirm time.
+# Minimum advance/deposit amount to charge on a contract.
+MIN_CONTRACT_ADVANCE=
+# Maximum advance/deposit amount to charge on a contract.
+MAX_CONTRACT_ADVANCE=
+# Total contract amount threshold that decides whether MIN_CONTRACT_ADVANCE
+# or MAX_CONTRACT_ADVANCE applies as the default deposit.
+TOTAL_CONTRACT_MIN=
+
+# --- Encryption ---
+# Symmetric key used to encrypt/decrypt `google_connection.refresh_token_encrypted`
+# at rest. Never log or expose this value (spec section 6.13, section 11).
+TOKEN_ENCRYPTION_KEY=
