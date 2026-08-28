@@ -40,3 +40,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# prisma — generated client output (regenerated via `npx prisma generate`,
+# wired into postinstall). Migrations under prisma/migrations ARE committed.
+/src/generated/

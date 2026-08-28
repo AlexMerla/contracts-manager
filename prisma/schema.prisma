@@ -1,0 +1,318 @@
+// Prisma schema — contract-manager
+// Source of truth: docs/spec.md §6 (data model)
+// Convention: snake_case identifiers in Postgres, camelCase in Prisma/TS via @map/@@map.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum UserRole {
+  super
+  normal
+
+  @@map("user_role")
+}
+
+enum ContractStatus {
+  pre_contract
+  confirmed
+  completed
+  cancelled
+
+  @@map("contract_status")
+}
+
+enum PaymentStatus {
+  pending
+  deposit_paid
+  partial
+  paid_in_full
+
+  @@map("payment_status")
+}
+
+enum PaymentMethod {
+  cash
+  bank_transfer
+  card
+  other
+
+  @@map("payment_method")
+}
+
+// ---------------------------------------------------------------------------
+// 6.1 users
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  name         String
+  email        String    @unique
+  passwordHash String?   @map("password_hash")
+  googleId     String?   @unique @map("google_id")
+  role         UserRole
+  active       Boolean   @default(true)
+  createdAt    DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt    DateTime  @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  createdContracts     Contract[]         @relation("ContractCreatedBy")
+  recordedPayments     Payment[]          @relation("PaymentRecordedBy")
+  notes                Note[]
+  connectedGoogleConns GoogleConnection[] @relation("GoogleConnectionConnectedBy")
+
+  @@map("users")
+}
+
+// ---------------------------------------------------------------------------
+// 6.2 categories
+// ---------------------------------------------------------------------------
+
+model Category {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  packages Package[]
+  services Service[]
+
+  @@map("categories")
+}
+
+// ---------------------------------------------------------------------------
+// 6.3 packages
+// ---------------------------------------------------------------------------
+
+model Package {
+  id            String   @id @default(uuid()) @db.Uuid
+  name          String
+  description   String?
+  categoryId    String   @map("category_id") @db.Uuid
+  active        Boolean  @default(true)
+  maxQuantity   Int?     @map("max_quantity")
+  quantityUnit  String?  @map("quantity_unit")
+  createdAt     DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt     DateTime @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  category          Category           @relation(fields: [categoryId], references: [id])
+  packageServices   PackageService[]
+  packagePrices     PackagePrice[]
+  contractPackages  ContractPackage[]
+
+  @@map("packages")
+}
+
+// ---------------------------------------------------------------------------
+// 6.4 contracts
+// ---------------------------------------------------------------------------
+
+model Contract {
+  id                 String         @id @default(uuid()) @db.Uuid
+  folio              String         @unique
+  clientName         String         @map("client_name")
+  clientPhone        String?        @map("client_phone")
+  clientMobile       String?        @map("client_mobile")
+  clientEmail        String?        @map("client_email")
+  clientAddress      String?        @map("client_address")
+  eventType          String         @map("event_type")
+  celebrated         String?
+  eventDate          DateTime       @map("event_date") @db.Date
+  eventTime          DateTime?      @map("event_time") @db.Time(6)
+  placeName          String?        @map("place_name")
+  placeAddress       String?        @map("place_address")
+  contractStatus     ContractStatus @default(pre_contract) @map("contract_status")
+  paymentStatus      PaymentStatus  @default(pending) @map("payment_status")
+  cancellationReason String?        @map("cancellation_reason")
+  discount           Decimal?       @db.Decimal(10, 2)
+  extraCharge        Decimal?       @map("extra_charge") @db.Decimal(10, 2)
+  subtotal           Decimal        @db.Decimal(10, 2)
+  total              Decimal        @db.Decimal(10, 2)
+  deposit            Decimal        @db.Decimal(10, 2)
+  balance            Decimal        @db.Decimal(10, 2)
+  viewerToken        String         @unique @map("viewer_token")
+  imageGenerated     Boolean        @default(false) @map("image_generated")
+  driveUploaded      Boolean        @default(false) @map("drive_uploaded")
+  calendarCreated    Boolean        @default(false) @map("calendar_created")
+  emailSent          Boolean        @default(false) @map("email_sent")
+  driveFileId        String?        @map("drive_file_id")
+  calendarEventId    String?        @map("calendar_event_id")
+  priceListId        String         @map("price_list_id") @db.Uuid
+  createdById        String         @map("created_by_id") @db.Uuid
+  createdAt          DateTime       @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt          DateTime       @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  priceList                 PriceList                   @relation(fields: [priceListId], references: [id])
+  createdBy                 User                         @relation("ContractCreatedBy", fields: [createdById], references: [id])
+  contractPackages           ContractPackage[]
+  contractServiceSelections ContractServiceSelection[]
+  payments                  Payment[]
+  notes                     Note[]
+
+  @@map("contracts")
+}
+
+// ---------------------------------------------------------------------------
+// 6.5 contract_packages — snapshot table. Never join to `packages` for
+// historical name/price; name_snapshot/price_snapshot are the source of truth.
+// ---------------------------------------------------------------------------
+
+model ContractPackage {
+  id            String  @id @default(uuid()) @db.Uuid
+  contractId    String  @map("contract_id") @db.Uuid
+  packageId     String  @map("package_id") @db.Uuid
+  nameSnapshot  String  @map("name_snapshot")
+  priceSnapshot Decimal @map("price_snapshot") @db.Decimal(10, 2)
+  quantity      Int     @default(1)
+
+  contract Contract @relation(fields: [contractId], references: [id])
+  package  Package  @relation(fields: [packageId], references: [id])
+
+  @@map("contract_packages")
+}
+
+// ---------------------------------------------------------------------------
+// 6.6 services
+// ---------------------------------------------------------------------------
+
+model Service {
+  id         String   @id @default(uuid()) @db.Uuid
+  name       String
+  details    String?
+  categoryId String   @map("category_id") @db.Uuid
+  options    Json?
+  createdAt  DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  category                  Category                    @relation(fields: [categoryId], references: [id])
+  packageServices           PackageService[]
+  contractServiceSelections ContractServiceSelection[]
+
+  @@map("services")
+}
+
+// ---------------------------------------------------------------------------
+// 6.7 package_services — many-to-many join, composite PK
+// ---------------------------------------------------------------------------
+
+model PackageService {
+  packageId String @map("package_id") @db.Uuid
+  serviceId String @map("service_id") @db.Uuid
+
+  package Package @relation(fields: [packageId], references: [id])
+  service Service @relation(fields: [serviceId], references: [id])
+
+  @@id([packageId, serviceId])
+  @@map("package_services")
+}
+
+// ---------------------------------------------------------------------------
+// 6.8 contract_service_selections
+// ---------------------------------------------------------------------------
+
+model ContractServiceSelection {
+  id              String @id @default(uuid()) @db.Uuid
+  contractId      String @map("contract_id") @db.Uuid
+  serviceId       String @map("service_id") @db.Uuid
+  selectedOption  String @map("selected_option")
+
+  contract Contract @relation(fields: [contractId], references: [id])
+  service  Service  @relation(fields: [serviceId], references: [id])
+
+  @@map("contract_service_selections")
+}
+
+// ---------------------------------------------------------------------------
+// 6.9 price_lists
+// ---------------------------------------------------------------------------
+
+model PriceList {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  isDefault Boolean  @default(false) @map("is_default")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  contracts     Contract[]
+  packagePrices PackagePrice[]
+
+  @@map("price_lists")
+}
+
+// ---------------------------------------------------------------------------
+// 6.10 package_prices
+// ---------------------------------------------------------------------------
+
+model PackagePrice {
+  id          String  @id @default(uuid()) @db.Uuid
+  packageId   String  @map("package_id") @db.Uuid
+  priceListId String  @map("price_list_id") @db.Uuid
+  price       Decimal @db.Decimal(10, 2)
+
+  package   Package   @relation(fields: [packageId], references: [id])
+  priceList PriceList @relation(fields: [priceListId], references: [id])
+
+  @@unique([packageId, priceListId])
+  @@map("package_prices")
+}
+
+// ---------------------------------------------------------------------------
+// 6.11 payments
+// ---------------------------------------------------------------------------
+
+model Payment {
+  id            String        @id @default(uuid()) @db.Uuid
+  contractId    String        @map("contract_id") @db.Uuid
+  amount        Decimal       @db.Decimal(10, 2)
+  method        PaymentMethod
+  paymentDate   DateTime      @map("payment_date") @db.Date
+  note          String?
+  recordedById  String        @map("recorded_by_id") @db.Uuid
+  createdAt     DateTime      @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  contract   Contract @relation(fields: [contractId], references: [id])
+  recordedBy User     @relation("PaymentRecordedBy", fields: [recordedById], references: [id])
+
+  @@map("payments")
+}
+
+// ---------------------------------------------------------------------------
+// 6.12 notes
+// ---------------------------------------------------------------------------
+
+model Note {
+  id         String   @id @default(uuid()) @db.Uuid
+  contractId String   @map("contract_id") @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  text       String
+  createdAt  DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+
+  contract Contract @relation(fields: [contractId], references: [id])
+  user     User     @relation(fields: [userId], references: [id])
+
+  @@map("notes")
+}
+
+// ---------------------------------------------------------------------------
+// 6.13 google_connection — singleton table, enforced at the application layer
+// ---------------------------------------------------------------------------
+
+model GoogleConnection {
+  id                     String    @id @default(uuid()) @db.Uuid
+  connected              Boolean   @default(false)
+  refreshTokenEncrypted  String?   @map("refresh_token_encrypted")
+  connectedById          String?   @map("connected_by_id") @db.Uuid
+  connectedAt            DateTime? @map("connected_at") @db.Timestamptz(6)
+  lastError              String?   @map("last_error")
+  updatedAt              DateTime  @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  connectedBy User? @relation("GoogleConnectionConnectedBy", fields: [connectedById], references: [id])
+
+  @@map("google_connection")
+}
