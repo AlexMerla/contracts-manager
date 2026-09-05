@@ -5,6 +5,8 @@
 
 **Language convention:** all code, database identifiers, API routes, and this document are in English. The product itself (UI copy, generated contracts, client-facing content) is in Spanish (Mexico).
 
+**UI design source of truth:** `docs/design-system.md` — tokens, component conventions, and content/voice rules derived from the Claude Design project "Sistema de diseño de pagos". Read it before implementing any screen, page, or UI component; do not invent visual or copy conventions ad hoc when it already has an answer.
+
 ---
 
 ## 1. Overview

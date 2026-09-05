@@ -4,7 +4,9 @@ This is the contract management system for "Todo con un Solo Proveedor" (event s
 
 **Authoritative spec:** `docs/spec.md` — read the relevant sections before implementing anything. Do not invent behavior that isn't defined there; if something is ambiguous, ask rather than assume.
 
-**Current sprint:** `specs/sprint-01-foundations/tasks.md` — work through the tasks in order, check them off (`- [x]`) as you complete them, and stop at each task's "Done when" criterion rather than continuing past it.
+**Current sprint:** `specs/sprint-01-foundations/tasks.md` is complete (8/8). Work the next sprint's `tasks.md` in `specs/` once its folder exists; check tasks off (`- [x]`) as you complete them, and stop at each task's "Done when" criterion rather than continuing past it.
+
+**UI design source of truth:** `docs/design-system.md` — read it before implementing any screen, page, or UI component. Do not invent visual conventions, component variants, or copy voice/tone ad hoc; it already has the answer (tokens, component API, content rules) derived from the project's Claude Design system.
 
 ## Non-negotiable rules from the spec
 
