@@ -40,7 +40,7 @@ Expected volume: **~2 contracts per week**. This number drives several architect
 | Forms/validation | react-hook-form + zod | Share zod schemas between client and server validation |
 | Database | PostgreSQL (Neon or Supabase free tier) | |
 | ORM | Prisma | Schema in `schema.prisma` should mirror §6 exactly |
-| Auth | Auth.js (NextAuth) — Credentials provider + Google provider | User login only — **not** the Google Master connection, see §4.3 |
+| Auth | Auth.js (NextAuth) — Credentials provider only | Email + password only, no Google sign-in for users. Not to be confused with the separate Google Master connection, see §4.3 |
 | Contract image generation | `@napi-rs/canvas` | Chosen over `canvas` for serverless compatibility on Vercel; chosen over Puppeteer/HTML rendering because the base template is a fixed JPEG, not a layout that needs a browser engine |
 | Email delivery | Resend | Free tier sufficient for volume |
 | WhatsApp delivery | ManyChat (existing client integration) | The app's responsibility is only to produce the public viewer link; ManyChat handles the actual WhatsApp send |
@@ -81,11 +81,11 @@ When a contract is confirmed (last step of the creation flow, §8):
 
 This pattern (status columns + manual retry) is the intended replacement for a queue's retry mechanism. Do not introduce a queue, cron job, or background worker to "improve" this — it is a deliberate simplification given the low volume.
 
-### 4.3 Two separate Google OAuth flows — do not merge these
+### 4.3 User login vs. the Google Master connection — do not conflate these
 
-**Flow A — user login.** Any user may log in with a personal Google account via Auth.js. This is standard per-user authentication and has no relationship to Drive/Calendar access.
+**Flow A — user login.** Email + password only (Auth.js Credentials provider). There is no Google sign-in and no self-service registration for users — accounts are created exclusively by a `super` user via the user management CRUD (§5, §14). **Corrected 2026-09-05**: an earlier draft of this spec called for an additional Google sign-in option for user login; that has been dropped. `users.password_hash` is therefore always required (see §6.1) — every account is created with a password by a `super` user.
 
-**Flow B — Google Master connection.** A single Google account belonging to the business, connected once by a `super` user through a separate, manual OAuth flow (not Auth.js). Its `refresh_token` is stored encrypted in the `google_connection` table (§6.6) and is used for **every** Drive upload and Calendar event creation, regardless of which user is logged in.
+**Flow B — Google Master connection.** A single Google account belonging to the business, connected once by a `super` user through a separate, manual OAuth flow (not Auth.js). Its `refresh_token` is stored encrypted in the `google_connection` table (§6.6) and is used for **every** Drive upload and Calendar event creation, regardless of which user is logged in. This is the **only** Google OAuth flow in the system.
 
 If the Master token expires or is revoked:
 - Contract creation must **not** be blocked.
@@ -125,8 +125,7 @@ Table names: `snake_case`, plural. Prisma models: `PascalCase` singular, mapped 
 | id | uuid, PK | |
 | name | text | |
 | email | text, unique | |
-| password_hash | text, nullable | null if the user only ever logs in via Google |
-| google_id | text, unique, nullable | |
+| password_hash | text | required — email + password is the only login method (§4.3) |
 | role | enum: `super`, `normal` | |
 | active | boolean, default true | |
 | created_at | timestamptz | |
@@ -319,7 +318,8 @@ Route: `/contracts/view/[viewerToken]`, no authentication. Displays the generate
 - Vercel free tier for the Next.js app (frontend + API routes).
 - PostgreSQL via Neon or Supabase free tier.
 - Resend free tier for email.
-- Environment variables must include (at minimum): `DATABASE_URL`, `NEXTAUTH_SECRET`, `GOOGLE_LOGIN_CLIENT_ID`/`SECRET` (Flow A, §4.3), `GOOGLE_MASTER_CLIENT_ID`/`SECRET` (Flow B, §4.3, kept distinct from the login credentials), `RESEND_API_KEY`, `MIN_CONTRACT_ADVANCE`, `MAX_CONTRACT_ADVANCE`, `TOTAL_CONTRACT_MIN`, `TOKEN_ENCRYPTION_KEY` (for `google_connection.refresh_token_encrypted`).
+- Environment variables must include (at minimum): `DATABASE_URL`, `NEXTAUTH_SECRET`, `GOOGLE_MASTER_CLIENT_ID`/`SECRET` (Flow B, §4.3 — the only Google OAuth credentials the system needs), `RESEND_API_KEY`, `MIN_CONTRACT_ADVANCE`, `MAX_CONTRACT_ADVANCE`, `TOTAL_CONTRACT_MIN`, `TOKEN_ENCRYPTION_KEY` (for `google_connection.refresh_token_encrypted`).
+- **`DIRECT_URL`** (local/dev only, not deployed to Vercel): Supabase's direct (non-pooled, port 5432) connection string, used exclusively by `prisma.config.ts` for `prisma migrate`/`db push`/introspection. `DATABASE_URL` (Supabase's transaction pooler, port 6543) is what the running app actually connects with (see `src/lib/prisma.ts`) and is the one configured in Vercel — the pooler doesn't hold the session-level locks Prisma Migrate needs, so Migrate must always go through the direct connection instead.
 
 ## 12. Resolved decisions log
 
@@ -330,6 +330,7 @@ No open questions remain. The following decisions were confirmed and are reflect
 3. **Calendar visibility for `normal` users** — scoped to their own contracts' events only (§5).
 4. **Google connection banner** — visible to all roles (read-only for `normal`, reconnect action for `super`) (§5).
 5. **Cancellation reason** — free text field (§6.4).
+6. **User login has no Google sign-in** (corrected 2026-09-05, during Sprint 2 implementation) — email + password only, via the Auth.js Credentials provider. Accounts are created exclusively by a `super` user through the user management CRUD (§5, §14); there is no self-service registration. This was a drafting error in the original spec, which called for an additional Google sign-in option for users — dropped in favor of a single, `super`-controlled account-creation path. `users.password_hash` is required as a result (§6.1).
 
 ## 13. Implementation roadmap
 
@@ -339,7 +340,7 @@ These are dependency-ordered work packages, not fixed-duration calendar sprints 
 Next.js + TypeScript + Tailwind + shadcn/ui scaffolding. Prisma schema mirroring §6 in full. Database provisioned (Neon or Supabase). Vercel deployment pipeline working end to end (a health-check page is enough to verify it). Nothing else can be built before this.
 
 ### Sprint 2 — Authentication and roles
-Auth.js with Credentials + Google providers (Flow A only, §4.3 — user login, not the Master connection). `users` table and its CRUD (super only). Authorization middleware that enforces the §5 permission matrix at the data-access layer, not only in the UI.
+Auth.js with the Credentials provider only (§4.3 — email + password, no Google sign-in for users). `users` table and its CRUD (super only) — the only way accounts are created. Authorization middleware that enforces the §5 permission matrix at the data-access layer, not only in the UI.
 
 ### Sprint 3 — Catalog (packages, services, prices)
 Full CRUD for `categories`, `packages` (including `max_quantity`/`quantity_unit`), `services` (including `options`), `package_services`, `price_lists`, and `package_prices`. Read-only views for `normal` users; edit access restricted to `super`.

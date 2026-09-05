@@ -100,7 +100,7 @@ Durations: `fast` 120ms, `base` 180ms, `slow` 280ms. Easing: `cubic-bezier(0.16,
 
 ## 2. Component conventions
 
-Base every component on shadcn/ui primitives where one exists; extend rather than replace. Three components are **domain components**, not visual-only — they encode business rules and must be built with the real Prisma enums, not left as generic UI:
+Base every component on shadcn/ui primitives where one exists; extend rather than replace. **Correction (discovered during Sprint 2 implementation, 2026-09-05)**: this project's shadcn install uses `@base-ui/react` (Base UI, `style: "base-nova"` in `components.json`), not Radix — Radix was assumed when this document was first written. Every "Radix" reference below means "this project's Base UI primitive," and API details (overlay/backdrop props, composition pattern) should be checked against `@base-ui/react`'s actual docs, not Radix's. Three components are **domain components**, not visual-only — they encode business rules and must be built with the real Prisma enums, not left as generic UI:
 
 | Component | Domain rule |
 |---|---|
@@ -115,18 +115,18 @@ Other components, with what needs to be added beyond shadcn's defaults:
 | `Button` | `Button` | Add two variants beyond shadcn's default/secondary/destructive/outline/ghost/link: **`brand`** (magenta, marketing/login only — see §1.1's brand-color rule) and **`cobro`** (green, "registrar pago" domain action). Extend `buttonVariants` (cva), don't fork the component. |
 | `Card` | `Card` | Add an `interactive` state (hover: elevate + slight `translateY`) — only for cards that are actually clickable; non-interactive cards must not move on hover. |
 | `Badge` | `Badge` | Add `tone: ink` for "privileged role" (used for `Super Usuario` in the users table) alongside the standard neutral/success/warning/danger/info tones. |
-| `Input` / `Select` / `Textarea` | shadcn form primitives | Focus state uses `accent-500` border + the accent `focus-ring` from §1.4. Decide at implementation time whether `Select` stays a styled native `<select>` (source system's choice) or adopts shadcn's Radix-based combobox — Radix is more accessible and consistent with the rest of shadcn, prefer it unless a specific screen needs native `<select>` behavior. |
-| `Field` | shadcn `FormItem`/`FormLabel`/`FormMessage` | Direct mapping, no gap. |
-| `Checkbox` / `Switch` | shadcn (Radix-based) | Visual restyle only (icon-based check mark) — shadcn's Radix logic is already correct, don't reimplement interaction. |
+| `Input` / `Select` / `Textarea` | shadcn form primitives | Focus state uses `accent-500` border + the accent `focus-ring` from §1.4. Decide at implementation time whether `Select` stays a styled native `<select>` or adopts shadcn's combobox — prefer the shadcn one for consistency unless a specific screen needs native `<select>` behavior. |
+| `Field` | shadcn `FormItem`/`FormLabel`/`FormMessage` (via react-hook-form + zod, per spec §3) | Direct mapping, no gap. |
+| `Checkbox` / `Switch` | shadcn | Visual restyle only (icon-based check mark) — shadcn's interaction logic is already correct, don't reimplement it. |
 | `DataTable` | shadcn `Table` + `@tanstack/react-table` (or equivalent) | Sticky header, uppercase + `caps` tracking headers, fixed "comfortable" density (§1.3), zebra striping optional per screen, mandatory Spanish `emptyLabel` per table (e.g. "Ningún contrato coincide con los filtros."). The source prototype has no pagination/sorting — decide per screen at implementation time whether the real data volume needs it. |
 | `KpiCard` | Custom (no direct shadcn equivalent) | `label`, `value` (can embed a `Money`), `delta` shown with unicode arrows (▲/▼), never icon glyphs for the delta itself. |
 | `ProgressBar` | shadcn `Progress` | Add a `tone: "auto"` mode for collection-progress bars that steps through amber → indigo → green by percentage (flat color bands, not a gradient) — this is domain logic (payment collection status), not a generic loading bar. |
 | `Alert` | shadcn `Alert` | Content rule, not a prop: every alert body must state cause + suggested action — never just a status statement. |
-| `Dialog` | shadcn `Dialog` (Radix) | Radix's default overlay has no blur — add `backdrop-filter: blur(4px)` to match the `scrim` token (§1.4). Footer layout is fixed: cancel (ghost) on the left, primary action on the right. |
+| `Dialog` | shadcn `Dialog` (Base UI) | **Correction (Sprint 2, 2026-09-05)**: this project's shadcn `Dialog` overlay already applies `backdrop-filter: blur` out of the box (Base UI's `Backdrop`, via `supports-backdrop-filter:backdrop-blur-xs` in the generated component) — no manual addition needed, contrary to what this doc originally assumed. Footer layout is fixed: cancel (ghost) on the left, primary action on the right. |
 | `EmptyState` | Custom (no direct shadcn equivalent) | Lucide icon at 26px inside a `neutral-100` circle — never an illustration or emoji. |
 | `PageHeader` | Custom (no shadcn equivalent) | Sticky top, 64px, `title`/`subtitle`/`breadcrumb`/`actions` — this is the per-screen header pattern used by every screen in the source kit; build once, reuse everywhere. |
 | `SidebarNav` | Custom (no shadcn equivalent) | Fixed 236px, sections separated by group labels (source kit groups: unlabeled top-level, "Catálogo", "Administración"), numeric badges (e.g. pending payments count), footer user chip with role label. |
-| `Tabs` | shadcn `Tabs` (Radix) | Underline uses `--ink`, not `--accent` — confirmed intentional in the source, not a bug; carry it over as-is. |
+| `Tabs` | shadcn `Tabs` (Base UI) | Underline uses `--ink`, not `--accent` — confirmed intentional in the source, not a bug; carry it over as-is. |
 
 ---
 
@@ -167,7 +167,7 @@ This maps the source kit's screens to spec §13's roadmap, so whoever picks up e
 These are flagged, not resolved, so implementation doesn't stall rediscovering them:
 
 1. **Theming scope**: light/dark only, via `next-themes` — the source system's density and accent-color "Tweaks" axes are explicitly **not** ported (confirmed decision, 2026-09-05). Do not build a theme-tweaks panel unless this decision is revisited.
-2. **`Select` component**: native `<select>` restyle vs. shadcn's Radix combobox — decide per-screen if needed, default to Radix for consistency.
+2. **`Select` component**: native `<select>` restyle vs. shadcn's Base UI-based combobox — decide per-screen if needed, default to the shadcn combobox for consistency.
 3. **DataTable pagination/sorting**: the source kit has neither. Decide based on real data volume when the first data-heavy table ships (`Contratos` or `Pagos`).
 4. **Chart library**: deferred to the Dashboard sprint (Sprint 8). Whatever is chosen, map series colors to `chart-1..8` (§1.1) rather than the library's defaults.
 5. **Icon audit**: confirm the ~25 Lucide icon names used by the source kit exist in whatever `lucide-react` version is installed when a screen is actually built (the version pinned during Sprint 1 was `^1.34.0` — re-check if it has since changed).

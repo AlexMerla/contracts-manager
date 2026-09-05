@@ -7,9 +7,23 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
+  --font-sans: var(--font-schibsted);
+  --font-mono: var(--font-roboto-mono);
+  --font-heading: var(--font-geist-sans);
+  --color-brand: var(--brand-500);
+  --color-brand-foreground: #ffffff;
+  --color-success: var(--success-solid);
+  --color-success-bg: var(--success-bg);
+  --color-success-fg: var(--success-fg);
+  --color-warning: var(--warning-solid);
+  --color-warning-bg: var(--warning-bg);
+  --color-warning-fg: var(--warning-fg);
+  --color-danger: var(--danger-solid);
+  --color-danger-bg: var(--danger-bg);
+  --color-danger-fg: var(--danger-fg);
+  --color-info: var(--info-solid);
+  --color-info-bg: var(--info-bg);
+  --color-info-fg: var(--info-fg);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -49,24 +63,50 @@
 }
 
 :root {
+  /* Brand/action tokens — see docs/design-system.md §1.1. Brand (magenta) is
+     never a data/status color, only wordmark/marketing surfaces. Accent
+     (indigo) is the action color: primary buttons, focus rings, active nav. */
+  --brand-500: #e22d89;
+  --brand-600: #c21f73;
+  --brand-700: #9e1860;
+
+  --accent-50: #eeeffc;
+  --accent-500: #5a5de0;
+  --accent-600: #4a4dc9;
+  --accent-700: #3b3da6;
+
+  /* Semantic pairs — fixed status vocabulary mapping lives in design-system.md §1.1 */
+  --success-solid: #17935c;
+  --success-bg: #e6f5ee;
+  --success-fg: #0f6e44;
+  --warning-solid: #d98a0b;
+  --warning-bg: #fcf2de;
+  --warning-fg: #8a5a08;
+  --danger-solid: #d93b4b;
+  --danger-bg: #fceaec;
+  --danger-fg: #9e2532;
+  --info-solid: #5a5de0;
+  --info-bg: #edeefc;
+  --info-fg: #3b3da6;
+
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
+  --primary: var(--accent-500);
+  --primary-foreground: #ffffff;
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
   --muted-foreground: oklch(0.556 0 0);
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
+  --destructive: var(--danger-solid);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --ring: var(--accent-500);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -90,18 +130,21 @@
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
+  /* Action color stays constant across themes (design-system.md §1.1) —
+     full "modo grafito" neutral-scale parity is deferred until a sprint
+     actually ships a theme toggle. */
+  --primary: var(--accent-500);
+  --primary-foreground: #ffffff;
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
   --muted-foreground: oklch(0.708 0 0);
   --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
+  --destructive: var(--danger-solid);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --ring: var(--accent-500);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -122,7 +165,7 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground tabular-nums;
   }
   html {
     @apply font-sans;
