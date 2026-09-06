@@ -7,7 +7,13 @@ import { auth } from "@/lib/auth";
 // only check — the pages/actions behind these routes call `requireRole`
 // themselves too (spec's "enforced at the data-access layer, not only
 // hidden in the UI", extended here to "not only in middleware either").
-const SUPER_ONLY_PREFIXES = ["/usuarios"];
+const SUPER_ONLY_PREFIXES = [
+  "/usuarios",
+  "/categorias",
+  "/servicios",
+  "/listas-precios",
+  "/paquetes",
+];
 const PUBLIC_PATHS = ["/login"];
 
 export default auth((req) => {
