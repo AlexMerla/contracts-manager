@@ -1,19 +1,15 @@
 import { NextResponse } from "next/server";
 
 import { auth } from "@/lib/auth";
+import { SUPER_ONLY_PREFIXES } from "@/lib/navigation";
 
 // Broad, first-line protection: unauthenticated -> /login, normal role on a
 // super-only prefix -> redirected away. This is defense-in-depth, not the
 // only check — the pages/actions behind these routes call `requireRole`
 // themselves too (spec's "enforced at the data-access layer, not only
 // hidden in the UI", extended here to "not only in middleware either").
-const SUPER_ONLY_PREFIXES = [
-  "/usuarios",
-  "/categorias",
-  "/servicios",
-  "/listas-precios",
-  "/paquetes",
-];
+// The prefix list is derived from src/lib/navigation.ts so the sidebar and
+// this guard can never disagree about which routes are super-only.
 const PUBLIC_PATHS = ["/login"];
 
 export default auth((req) => {

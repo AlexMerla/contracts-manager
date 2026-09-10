@@ -6,6 +6,7 @@ import { auth } from "@/lib/auth";
 import { ForbiddenError, UnauthorizedError, requireRole } from "@/lib/authorization";
 import { prisma } from "@/lib/prisma";
 import { Icon } from "@/components/ui/icon";
+import { PageHeader } from "@/components/page-header";
 
 import { PackageBasicForm } from "./package-basic-form";
 import { PackageServicesEditor } from "./package-services-editor";
@@ -58,54 +59,55 @@ export default async function PaqueteDetailPage({
   );
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-6 py-10">
-      <div>
-        <Link
-          href="/paquetes"
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-        >
-          <Icon icon={ArrowLeft} className="size-3.5" />
-          Volver a paquetes
-        </Link>
-        <h1 className="mt-2 font-heading text-xl font-semibold">
-          Editar paquete: {pkg.name}
-        </h1>
+    <>
+      <PageHeader
+        title={`Editar paquete: ${pkg.name}`}
+        breadcrumb={
+          <Link
+            href="/paquetes"
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+          >
+            <Icon icon={ArrowLeft} className="size-3.5" />
+            Volver a paquetes
+          </Link>
+        }
+      />
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-7 py-6">
+        <PackageBasicForm
+          pkg={{
+            id: pkg.id,
+            name: pkg.name,
+            description: pkg.description,
+            categoryId: pkg.categoryId,
+            maxQuantity: pkg.maxQuantity,
+            quantityUnit: pkg.quantityUnit,
+          }}
+          categories={categories.map((category) => ({
+            id: category.id,
+            name: category.name,
+          }))}
+        />
+
+        <PackageServicesEditor
+          packageId={pkg.id}
+          services={services.map((service) => ({
+            id: service.id,
+            name: service.name,
+            categoryName: service.category.name,
+          }))}
+          selectedServiceIds={selectedServiceIds}
+        />
+
+        <PackagePricesEditor
+          packageId={pkg.id}
+          priceLists={priceLists.map((priceList) => ({
+            id: priceList.id,
+            name: priceList.name,
+            isDefault: priceList.isDefault,
+            price: priceByListId.get(priceList.id) ?? null,
+          }))}
+        />
       </div>
-
-      <PackageBasicForm
-        pkg={{
-          id: pkg.id,
-          name: pkg.name,
-          description: pkg.description,
-          categoryId: pkg.categoryId,
-          maxQuantity: pkg.maxQuantity,
-          quantityUnit: pkg.quantityUnit,
-        }}
-        categories={categories.map((category) => ({
-          id: category.id,
-          name: category.name,
-        }))}
-      />
-
-      <PackageServicesEditor
-        packageId={pkg.id}
-        services={services.map((service) => ({
-          id: service.id,
-          name: service.name,
-          categoryName: service.category.name,
-        }))}
-        selectedServiceIds={selectedServiceIds}
-      />
-
-      <PackagePricesEditor
-        packageId={pkg.id}
-        priceLists={priceLists.map((priceList) => ({
-          id: priceList.id,
-          name: priceList.name,
-          isDefault: priceList.isDefault,
-          price: priceByListId.get(priceList.id) ?? null,
-        }))}
-      />
-    </div>
+    </>
   );
 }

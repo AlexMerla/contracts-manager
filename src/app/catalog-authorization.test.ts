@@ -29,19 +29,19 @@ import {
   createCategory,
   deleteCategory,
   updateCategory,
-} from "@/app/categorias/actions";
+} from "@/app/(app)/categorias/actions";
 import {
   createService,
   deleteService,
   updateService,
-} from "@/app/servicios/actions";
+} from "@/app/(app)/servicios/actions";
 import {
   createPriceList,
   deletePriceList,
   setPriceListActive,
   setPriceListDefault,
   updatePriceList,
-} from "@/app/listas-precios/actions";
+} from "@/app/(app)/listas-precios/actions";
 import {
   createPackage,
   deletePackage,
@@ -49,7 +49,7 @@ import {
   setPackageActive,
   setPackageServices,
   updatePackage,
-} from "@/app/paquetes/actions";
+} from "@/app/(app)/paquetes/actions";
 
 const DUMMY_ID = "00000000-0000-0000-0000-000000000000";
 

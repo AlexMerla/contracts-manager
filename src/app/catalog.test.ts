@@ -28,14 +28,14 @@ vi.mock("next/cache", () => ({
 }));
 
 import { prisma } from "@/lib/prisma";
-import { deleteCategory } from "@/app/categorias/actions";
-import { deleteService } from "@/app/servicios/actions";
-import { setPriceListDefault } from "@/app/listas-precios/actions";
+import { deleteCategory } from "@/app/(app)/categorias/actions";
+import { deleteService } from "@/app/(app)/servicios/actions";
+import { setPriceListDefault } from "@/app/(app)/listas-precios/actions";
 import {
   deletePackage,
   savePackagePrice,
   setPackageServices,
-} from "@/app/paquetes/actions";
+} from "@/app/(app)/paquetes/actions";
 
 const superSession = {
   user: {
