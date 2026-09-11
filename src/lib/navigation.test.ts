@@ -15,11 +15,15 @@ describe("navigation", () => {
   });
 
   it("navItemsForRole('normal') returns only the shared items", () => {
-    expect(navItemsForRole("normal").map((i) => i.href)).toEqual(["/", "/catalogo"]);
+    expect(navItemsForRole("normal").map((i) => i.href)).toEqual([
+      "/",
+      "/catalogo",
+      "/contratos",
+    ]);
   });
 
-  it("navItemsForRole('super') returns all 7 items", () => {
-    expect(navItemsForRole("super")).toHaveLength(7);
+  it("navItemsForRole('super') returns all 8 items", () => {
+    expect(navItemsForRole("super")).toHaveLength(8);
   });
 
   it("every NAV_ITEMS icon resolves in NAV_ICONS", () => {

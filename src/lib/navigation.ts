@@ -7,7 +7,8 @@ export type NavIconName =
   | "ConciergeBell"
   | "Package"
   | "ListOrdered"
-  | "Users";
+  | "Users"
+  | "FileText";
 
 export type NavGroup = "Catálogo" | "Administración";
 
@@ -22,6 +23,7 @@ export interface NavItem {
 export const NAV_ITEMS: readonly NavItem[] = [
   { href: "/", label: "Inicio", icon: "LayoutDashboard", group: null, role: "normal" },
   { href: "/catalogo", label: "Catálogo", icon: "BookOpen", group: null, role: "normal" },
+  { href: "/contratos", label: "Contratos", icon: "FileText", group: null, role: "normal" },
   { href: "/categorias", label: "Categorías", icon: "Tags", group: "Catálogo", role: "super" },
   { href: "/servicios", label: "Servicios", icon: "ConciergeBell", group: "Catálogo", role: "super" },
   { href: "/paquetes", label: "Paquetes", icon: "Package", group: "Catálogo", role: "super" },

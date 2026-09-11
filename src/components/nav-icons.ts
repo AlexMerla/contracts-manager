@@ -1,6 +1,7 @@
 import {
   BookOpen,
   ConciergeBell,
+  FileText,
   LayoutDashboard,
   ListOrdered,
   Package,
@@ -19,4 +20,5 @@ export const NAV_ICONS: Record<NavIconName, LucideIcon> = {
   Package,
   ListOrdered,
   Users,
+  FileText,
 };
