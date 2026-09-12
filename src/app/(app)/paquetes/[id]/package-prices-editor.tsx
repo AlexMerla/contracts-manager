@@ -132,7 +132,7 @@ export function PackagePricesEditor({
             Ninguna lista de precios registrada todavía.
           </p>
         ) : (
-          <div className="overflow-x-auto rounded-lg ring-1 ring-foreground/10">
+          <div className="overflow-x-auto rounded-lg ring-1 ring-foreground/10 shadow-sm">
             <Table>
               <TableHeader>
                 <TableRow>

@@ -152,7 +152,7 @@ export function ContractWizard({ priceLists, categories, depositThresholds }: Co
   const visibleSteps: StepNumber[] = needsServiceStep ? [1, 2, 3, 4, 5] : [1, 2, 4, 5];
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-7 py-6">
+    <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-6 px-7 py-6">
       <ol className="flex flex-wrap gap-x-4 gap-y-1 text-xs font-medium tracking-wide uppercase">
         {visibleSteps.map((n) => (
           <li

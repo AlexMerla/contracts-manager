@@ -44,8 +44,8 @@ export default async function ListasPreciosPage() {
         subtitle="Solo el Super Usuario puede editar esta sección. Debe existir siempre exactamente una lista predeterminada."
         actions={<CreatePriceListDialog />}
       />
-      <div className="mx-auto w-full max-w-4xl px-7 py-6">
-        <div className="overflow-x-auto rounded-lg ring-1 ring-foreground/10">
+      <div className="mx-auto w-full max-w-[1280px] px-7 py-6">
+        <div className="overflow-x-auto rounded-lg ring-1 ring-foreground/10 shadow-sm">
           <Table>
             <TableHeader>
               <TableRow>

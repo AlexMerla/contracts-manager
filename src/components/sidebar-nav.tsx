@@ -76,7 +76,7 @@ export function SidebarNav({ user, collapsed, onToggleCollapse }: SidebarNavProp
                       "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium",
                       collapsed && "justify-center",
                       active
-                        ? "bg-accent text-accent-foreground"
+                        ? "bg-[var(--accent-50)] text-[var(--accent-700)] dark:bg-[var(--accent-500)]/15 dark:text-[var(--accent-500)]"
                         : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                     )}
                   >

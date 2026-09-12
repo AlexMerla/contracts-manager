@@ -44,8 +44,8 @@ export default async function UsuariosPage() {
         subtitle="Solo el Super Usuario puede editar esta sección."
         actions={<CreateUserDialog />}
       />
-      <div className="mx-auto w-full max-w-3xl px-7 py-6">
-        <div className="overflow-x-auto rounded-lg ring-1 ring-foreground/10">
+      <div className="mx-auto w-full max-w-[1280px] px-7 py-6">
+        <div className="overflow-x-auto rounded-lg ring-1 ring-foreground/10 shadow-sm">
           <Table>
             <TableHeader>
               <TableRow>

@@ -53,6 +53,8 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -89,7 +91,18 @@
   --info-bg: #edeefc;
   --info-fg: #3b3da6;
 
-  --background: oklch(1 0 0);
+  /* Canvas/surface separation — see docs/design-system.md tokens/elevation.css.
+     --canvas is the page background (neutral-50); --card/--surface stay pure
+     white so cards visibly float above the page. */
+  --canvas: #f8f9fb;
+
+  /* Elevation — blue-black shadow base (rgb(20 23 32)), not pure black, per
+     docs/design-system.md tokens/elevation.css. Used on cards and table
+     wrappers alongside the existing ring-1 crisp edge. */
+  --shadow-sm: 0 1px 2px 0 rgb(20 23 32 / 0.06), 0 1px 3px 0 rgb(20 23 32 / 0.08);
+  --shadow-md: 0 2px 4px -1px rgb(20 23 32 / 0.08), 0 4px 8px -2px rgb(20 23 32 / 0.1);
+
+  --background: var(--canvas);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
@@ -124,7 +137,13 @@
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
+  /* Dark canvas stays darker than --card (0.205) so cards still read as
+     raised surfaces, same relative separation as light mode. */
+  --canvas: oklch(0.145 0 0);
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.24), 0 1px 3px 0 rgb(0 0 0 / 0.3);
+  --shadow-md: 0 2px 4px -1px rgb(0 0 0 / 0.3), 0 4px 8px -2px rgb(0 0 0 / 0.36);
+
+  --background: var(--canvas);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
   --card-foreground: oklch(0.985 0 0);

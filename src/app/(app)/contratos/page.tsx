@@ -47,8 +47,8 @@ export default async function ContratosPage() {
           <Button render={<Link href="/contratos/nuevo" />}>Nuevo contrato</Button>
         }
       />
-      <div className="mx-auto w-full max-w-6xl px-7 py-6">
-        <div className="overflow-x-auto rounded-lg ring-1 ring-foreground/10">
+      <div className="mx-auto w-full max-w-[1280px] px-7 py-6">
+        <div className="overflow-x-auto rounded-lg ring-1 ring-foreground/10 shadow-sm">
           <Table>
             <TableHeader>
               <TableRow>

@@ -53,8 +53,8 @@ export default async function ServiciosPage() {
         subtitle="Solo el Super Usuario puede editar esta sección."
         actions={<CreateServiceDialog categories={categoryOptions} />}
       />
-      <div className="mx-auto w-full max-w-5xl px-7 py-6">
-        <div className="overflow-x-auto rounded-lg ring-1 ring-foreground/10">
+      <div className="mx-auto w-full max-w-[1280px] px-7 py-6">
+        <div className="overflow-x-auto rounded-lg ring-1 ring-foreground/10 shadow-sm">
           <Table>
             <TableHeader>
               <TableRow>

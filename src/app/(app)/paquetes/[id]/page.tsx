@@ -72,7 +72,7 @@ export default async function PaqueteDetailPage({
           </Link>
         }
       />
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-7 py-6">
+      <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-6 px-7 py-6">
         <PackageBasicForm
           pkg={{
             id: pkg.id,

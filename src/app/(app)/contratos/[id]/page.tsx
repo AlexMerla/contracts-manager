@@ -79,7 +79,7 @@ export default async function ContratoDetailPage({ params }: ContratoDetailPageP
           </Link>
         }
       />
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-7 py-6">
+      <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-6 px-7 py-6">
         <Card>
           <CardHeader>
             <CardTitle>Resumen</CardTitle>
@@ -127,7 +127,7 @@ export default async function ContratoDetailPage({ params }: ContratoDetailPageP
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto rounded-lg ring-1 ring-foreground/10">
+            <div className="overflow-x-auto rounded-lg ring-1 ring-foreground/10 shadow-sm">
               <Table>
                 <TableHeader>
                   <TableRow>
