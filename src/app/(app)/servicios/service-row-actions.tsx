@@ -65,6 +65,10 @@ export function ServiceRowActions({
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  const categoryItems = Object.fromEntries(
+    categories.map((category) => [category.id, category.name])
+  );
+
   const defaultValues: EditServiceFormValues = {
     id: service.id,
     name: service.name,
@@ -159,7 +163,11 @@ export function ServiceRowActions({
                   control={control}
                   name="categoryId"
                   render={({ field }) => (
-                    <Select value={field.value} onValueChange={field.onChange}>
+                    <Select
+                      items={categoryItems}
+                      value={field.value}
+                      onValueChange={field.onChange}
+                    >
                       <SelectTrigger id={`categoryId-${service.id}`} className="w-full">
                         <SelectValue placeholder="Seleccione una categoría" />
                       </SelectTrigger>

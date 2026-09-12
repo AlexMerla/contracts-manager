@@ -25,8 +25,16 @@ export function PriceListSwitcher({
 }: PriceListSwitcherProps) {
   const router = useRouter();
 
+  const priceListItems = Object.fromEntries(
+    priceLists.map((priceList) => [
+      priceList.id,
+      `${priceList.name}${priceList.isDefault ? " (predeterminada)" : ""}`,
+    ])
+  );
+
   return (
     <Select
+      items={priceListItems}
       value={selectedId}
       onValueChange={(value) => {
         router.push(`/catalogo?lista=${value}`);

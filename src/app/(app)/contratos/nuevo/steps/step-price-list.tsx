@@ -28,6 +28,13 @@ export function StepPriceList({
   onChange,
   onNext,
 }: StepPriceListProps) {
+  const priceListItems = Object.fromEntries(
+    priceLists.map((priceList) => [
+      priceList.id,
+      `${priceList.name}${priceList.isDefault ? " (predeterminada)" : ""}`,
+    ])
+  );
+
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-muted-foreground">
@@ -41,7 +48,11 @@ export function StepPriceList({
           todavía.
         </p>
       ) : (
-        <Select value={priceListId} onValueChange={(value) => onChange(value ?? "")}>
+        <Select
+          items={priceListItems}
+          value={priceListId}
+          onValueChange={(value) => onChange(value ?? "")}
+        >
           <SelectTrigger className="w-full sm:w-80">
             <SelectValue placeholder="Seleccione una lista de precios" />
           </SelectTrigger>

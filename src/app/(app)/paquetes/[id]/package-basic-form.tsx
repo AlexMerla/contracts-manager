@@ -56,6 +56,10 @@ export function PackageBasicForm({ pkg, categories }: PackageBasicFormProps) {
   const [formError, setFormError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
+  const categoryItems = Object.fromEntries(
+    categories.map((category) => [category.id, category.name])
+  );
+
   const {
     register,
     handleSubmit,
@@ -126,7 +130,11 @@ export function PackageBasicForm({ pkg, categories }: PackageBasicFormProps) {
                 control={control}
                 name="categoryId"
                 render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
+                  <Select
+                    items={categoryItems}
+                    value={field.value}
+                    onValueChange={field.onChange}
+                  >
                     <SelectTrigger id="categoryId" className="w-full">
                       <SelectValue placeholder="Seleccione una categoría" />
                     </SelectTrigger>

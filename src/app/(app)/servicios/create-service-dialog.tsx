@@ -50,6 +50,10 @@ export function CreateServiceDialog({ categories }: CreateServiceDialogProps) {
   const [open, setOpen] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
+  const categoryItems = Object.fromEntries(
+    categories.map((category) => [category.id, category.name])
+  );
+
   const {
     register,
     handleSubmit,
@@ -114,7 +118,11 @@ export function CreateServiceDialog({ categories }: CreateServiceDialogProps) {
                 control={control}
                 name="categoryId"
                 render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
+                  <Select
+                    items={categoryItems}
+                    value={field.value}
+                    onValueChange={field.onChange}
+                  >
                     <SelectTrigger id="categoryId" className="w-full">
                       <SelectValue placeholder="Seleccione una categoría" />
                     </SelectTrigger>

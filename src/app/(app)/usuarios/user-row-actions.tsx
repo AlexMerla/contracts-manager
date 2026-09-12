@@ -41,6 +41,11 @@ const editUserSchema = z.object({
 
 type EditUserValues = z.infer<typeof editUserSchema>;
 
+const roleItems = {
+  normal: "Normal",
+  super: "Super Usuario",
+};
+
 interface UserRowActionsProps {
   user: {
     id: string;
@@ -123,7 +128,11 @@ export function UserRowActions({ user }: UserRowActionsProps) {
                   control={control}
                   name="role"
                   render={({ field }) => (
-                    <Select value={field.value} onValueChange={field.onChange}>
+                    <Select
+                      items={roleItems}
+                      value={field.value}
+                      onValueChange={field.onChange}
+                    >
                       <SelectTrigger id={`role-${user.id}`} className="w-full">
                         <SelectValue />
                       </SelectTrigger>

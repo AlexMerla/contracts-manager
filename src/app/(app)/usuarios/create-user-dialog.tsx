@@ -42,6 +42,11 @@ const createUserSchema = z.object({
 
 type CreateUserValues = z.infer<typeof createUserSchema>;
 
+const roleItems = {
+  normal: "Normal",
+  super: "Super Usuario",
+};
+
 export function CreateUserDialog() {
   const [open, setOpen] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -115,7 +120,11 @@ export function CreateUserDialog() {
                 control={control}
                 name="role"
                 render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
+                  <Select
+                    items={roleItems}
+                    value={field.value}
+                    onValueChange={field.onChange}
+                  >
                     <SelectTrigger id="role" className="w-full">
                       <SelectValue />
                     </SelectTrigger>
