@@ -12,8 +12,21 @@ vi.mock("@/lib/auth", () => ({
   auth: mockAuth,
 }));
 
+// `revalidatePath` throws "static generation store missing" when called
+// outside an actual Next.js request/render lifecycle — expected when
+// invoking a Server Action directly from a test runner (see
+// src/app/catalog.test.ts for the same stub). `regenerateContractImage`
+// calls it after flipping `imageGenerated`.
+vi.mock("next/cache", () => ({
+  revalidatePath: vi.fn(),
+}));
+
 import { prisma } from "@/lib/prisma";
-import { createContract, type CreateContractResult } from "@/app/(app)/contratos/actions";
+import {
+  createContract,
+  regenerateContractImage,
+  type CreateContractResult,
+} from "@/app/(app)/contratos/actions";
 import type { CreateContractPayload } from "@/app/(app)/contratos/nuevo/schema";
 
 const ownerUserId = randomUUID();
@@ -237,5 +250,53 @@ describe("createContract", () => {
     const contract = await prisma.contract.findUniqueOrThrow({ where: { id: contractId } });
     expect(contract.createdById).toBe(ownerUserId);
     expect(contract.createdById).not.toBe(otherUserId);
+  });
+
+  // Sprint 5 task 6: image generation runs as a best-effort step right
+  // after the transaction commits — this proves it actually ran and set
+  // the status column, not just that it didn't throw.
+  it("auto-generates the contract image at confirm time and sets imageGenerated", async () => {
+    const result = await createContract(basePayload());
+    expect("success" in result && result.success).toBe(true);
+    const { contractId } = result as Extract<CreateContractResult, { success: true }>;
+    createdContractIds.push(contractId);
+
+    const contract = await prisma.contract.findUniqueOrThrow({ where: { id: contractId } });
+    expect(contract.imageGenerated).toBe(true);
+  });
+
+  // Sprint 5 tasks 6 & 7: the manual retry / on-demand regeneration action.
+  // Proves both the §5 ownership scoping (another user's session can't
+  // touch this contract, and imageGenerated stays false) and the actual
+  // regeneration + flag flip for the owning session.
+  it("regenerateContractImage rejects a non-owning session and succeeds for the owner", async () => {
+    const result = await createContract(basePayload());
+    expect("success" in result && result.success).toBe(true);
+    const { contractId } = result as Extract<CreateContractResult, { success: true }>;
+    createdContractIds.push(contractId);
+
+    // Simulate the confirm-time generation having failed.
+    await prisma.contract.update({ where: { id: contractId }, data: { imageGenerated: false } });
+
+    mockAuth.mockResolvedValueOnce({
+      user: {
+        id: otherUserId,
+        role: "normal" as const,
+        name: "Other",
+        email: "other-test@example.com",
+      },
+      expires: new Date(Date.now() + 60_000).toISOString(),
+    });
+    const otherResult = await regenerateContractImage(contractId);
+    expect("error" in otherResult).toBe(true);
+
+    const stillFalse = await prisma.contract.findUniqueOrThrow({ where: { id: contractId } });
+    expect(stillFalse.imageGenerated).toBe(false);
+
+    const ownerResult = await regenerateContractImage(contractId);
+    expect("success" in ownerResult && ownerResult.success).toBe(true);
+
+    const regenerated = await prisma.contract.findUniqueOrThrow({ where: { id: contractId } });
+    expect(regenerated.imageGenerated).toBe(true);
   });
 });

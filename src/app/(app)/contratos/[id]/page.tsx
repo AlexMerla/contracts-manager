@@ -24,6 +24,8 @@ import { Money } from "@/components/money";
 import { StatusPill } from "@/components/status-pill";
 import { PageHeader } from "@/components/page-header";
 
+import { RetryImageButton } from "./retry-image-button";
+
 const dateFormatter = new Intl.DateTimeFormat("es-MX", { dateStyle: "long" });
 const timeFormatter = new Intl.DateTimeFormat("es-MX", {
   hour: "2-digit",
@@ -81,9 +83,16 @@ export default async function ContratoDetailPage({ params }: ContratoDetailPageP
         <Card>
           <CardHeader>
             <CardTitle>Resumen</CardTitle>
-            <div className="flex gap-2">
-              <StatusPill kind="contrato" value={contract.contractStatus} />
-              <StatusPill kind="pago" value={contract.paymentStatus} />
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex gap-2">
+                <StatusPill kind="contrato" value={contract.contractStatus} />
+                <StatusPill kind="pago" value={contract.paymentStatus} />
+              </div>
+              {/* Spec §4.2: a visual indicator plus a manual retry action
+                  for an incomplete delivery step — only shown once it has
+                  actually failed, not while it's merely pending sequential
+                  processing at confirm time. */}
+              {!contract.imageGenerated && <RetryImageButton contractId={contract.id} />}
             </div>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">

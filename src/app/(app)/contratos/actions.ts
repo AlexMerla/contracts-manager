@@ -2,8 +2,12 @@
 
 import { randomUUID } from "node:crypto";
 
+import { revalidatePath } from "next/cache";
+
 import { auth } from "@/lib/auth";
-import { requireRole } from "@/lib/authorization";
+import { requireRole, scopeToOwner } from "@/lib/authorization";
+import { generateContractImage } from "@/lib/contract-template/generate-contract-image";
+import { getContractImageBuffer } from "@/lib/contract-template/get-contract-image-buffer";
 import { nextFolio } from "@/lib/contracts/folio";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
@@ -208,6 +212,42 @@ export async function createContract(
         return created;
       });
 
+      // Sprint 5 task 6 / spec §4.2: image generation runs AFTER the
+      // transaction has committed, as a separate best-effort step — never
+      // inside prisma.$transaction. If it throws, contract creation must
+      // still succeed; `imageGenerated` stays `false` for the manual retry
+      // action (task 7 / `regenerateContractImage` below) rather than
+      // rolling back or blocking the response.
+      try {
+        await generateContractImage({
+          folio: contract.folio,
+          eventDate: contract.eventDate,
+          eventTime: contract.eventTime,
+          clientName: contract.clientName,
+          eventType: contract.eventType,
+          clientAddress: contract.clientAddress,
+          celebrated: contract.celebrated,
+          clientEmail: contract.clientEmail,
+          clientPhone: contract.clientPhone,
+          clientMobile: contract.clientMobile,
+          placeName: contract.placeName,
+          placeAddress: contract.placeAddress,
+          services: contractPackagesData.map((line) => ({
+            name: line.nameSnapshot,
+            quantity: line.quantity,
+          })),
+          total,
+          deposit: data.deposit,
+          balance,
+        });
+        await prisma.contract.update({
+          where: { id: contract.id },
+          data: { imageGenerated: true },
+        });
+      } catch (error: unknown) {
+        console.error(`Failed to generate image for contract ${contract.id}:`, error);
+      }
+
       return { success: true, contractId: contract.id, folio: contract.folio };
     } catch (error: unknown) {
       if (isFolioCollision(error) && attempt < MAX_FOLIO_ATTEMPTS) {
@@ -219,4 +259,50 @@ export async function createContract(
 
   // Unreachable — the loop above always returns or throws.
   return { error: "No se pudo generar un folio único. Intente nuevamente." };
+}
+
+export type RegenerateContractImageResult = { success: true } | { error: string };
+
+// Sprint 5 tasks 6 & 7: this single action serves both as the "on demand"
+// regeneration entry point (task 6 — reusable later by Drive upload, email
+// attachment, and the public viewer, all of which will call
+// `getContractImageBuffer` directly rather than through this action) and as
+// the manual retry action bound to the contract detail page's "Reintentar
+// generación de imagen" button (task 7). Building two near-identical
+// functions for the same operation would just be duplication; the only
+// thing this action adds on top of `getContractImageBuffer` is the
+// owner-scoped authorization check and flipping `imageGenerated`.
+//
+// Per spec §4.2, retrying is naturally idempotent here: generation always
+// reads fresh from stored data and never checks/dedupes against a prior
+// attempt, so calling this again for an already-succeeded contract simply
+// regenerates the same image and re-sets the same flag.
+export async function regenerateContractImage(
+  contractId: string
+): Promise<RegenerateContractImageResult> {
+  const session = await requireSession();
+
+  // Ownership check per spec §5: a `normal` user must not be able to
+  // regenerate (or even probe the existence of) another user's contract.
+  const db = scopeToOwner(session);
+  const contract = await db.contract.findUnique({ where: { id: contractId } });
+  if (!contract) {
+    return { error: "Contrato no encontrado." };
+  }
+
+  try {
+    await getContractImageBuffer(contractId);
+  } catch (error: unknown) {
+    console.error(`Failed to regenerate image for contract ${contractId}:`, error);
+    return { error: "No se pudo generar la imagen del contrato. Intente nuevamente." };
+  }
+
+  await prisma.contract.update({
+    where: { id: contractId },
+    data: { imageGenerated: true },
+  });
+
+  revalidatePath(`/contratos/${contractId}`);
+
+  return { success: true };
 }
