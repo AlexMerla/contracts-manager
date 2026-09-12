@@ -63,7 +63,7 @@ export default async function UsuariosPage() {
                   <TableCell>{user.email}</TableCell>
                   <TableCell>
                     <Badge variant={user.role === "super" ? "ink" : "secondary"}>
-                      {user.role === "super" ? "Super Usuario" : "Normal"}
+                      {user.role === "super" ? "Super Usuario" : "Usuario Normal"}
                     </Badge>
                   </TableCell>
                   <TableCell>

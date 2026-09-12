@@ -31,16 +31,15 @@ function initialsFor(name: string): string {
     .join("");
 }
 
-// Role label matches the existing convention from usuarios/page.tsx
-// ("Super Usuario" / "Normal" — spec §"Footer user chip with sign-out"
-// explicitly calls out that it is "Normal", not "Usuario").
+// Role label matches the convention in usuarios/page.tsx
+// ("Super Usuario" / "Usuario Normal").
 function roleLabel(role: ShellUser["role"]): string {
-  return role === "super" ? "Super Usuario" : "Normal";
+  return role === "super" ? "Super Usuario" : "Usuario Normal";
 }
 
 function InitialsCircle({ name }: { name: string }) {
   return (
-    <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-sidebar-primary text-xs font-medium text-sidebar-primary-foreground">
+    <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[var(--brand-50)] text-xs font-medium text-[var(--brand-700)] dark:bg-[var(--brand-500)]/15 dark:text-[var(--brand-500)]">
       {initialsFor(name)}
     </span>
   );

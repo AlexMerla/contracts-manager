@@ -66,7 +66,7 @@ export function CreatePriceListDialog() {
         }
       }}
     >
-      <DialogTrigger render={<Button>Crear lista de precios</Button>} />
+      <DialogTrigger render={<Button size="lg">Crear lista de precios</Button>} />
       <DialogContent>
         <form onSubmit={handleSubmit(onSubmit)} noValidate>
           <DialogHeader>

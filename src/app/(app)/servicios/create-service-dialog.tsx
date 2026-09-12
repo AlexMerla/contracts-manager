@@ -92,7 +92,7 @@ export function CreateServiceDialog({ categories }: CreateServiceDialogProps) {
         }
       }}
     >
-      <DialogTrigger render={<Button>Crear servicio</Button>} />
+      <DialogTrigger render={<Button size="lg">Crear servicio</Button>} />
       <DialogContent>
         <form onSubmit={handleSubmit(onSubmit)} noValidate>
           <DialogHeader>

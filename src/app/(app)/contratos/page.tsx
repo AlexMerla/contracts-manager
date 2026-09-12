@@ -4,25 +4,30 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { scopeToOwner } from "@/lib/authorization";
 import { Button } from "@/components/ui/button";
-import {
-  Table,
-  TableHeader,
-  TableRow,
-  TableHead,
-  TableBody,
-  TableCell,
-} from "@/components/ui/table";
-import { Money } from "@/components/money";
-import { StatusPill } from "@/components/status-pill";
 import { PageHeader } from "@/components/page-header";
 
+import { ContractsListView, type ContractRow } from "./contracts-list-view";
+
 const dateFormatter = new Intl.DateTimeFormat("es-MX", { dateStyle: "short" });
+
+interface ContratosPageProps {
+  // Same `searchParams` pattern as catalogo/page.tsx. Read only to seed the
+  // client view's initial state — filtering itself is client-side.
+  searchParams: Promise<{
+    estado?: string;
+    q?: string;
+    tipoEvento?: string;
+    listaPrecios?: string;
+    estatusPago?: string;
+  }>;
+}
 
 // Spec §5: `normal` sees only contracts where `createdById = self`, `super`
 // sees all. Enforced at the data-access layer via `scopeToOwner` (not just
 // by hiding rows in the UI) — sprint-04 task 8's "a normal user's list never
-// includes another user's contracts".
-export default async function ContratosPage() {
+// includes another user's contracts". The tabs/filters below operate on the
+// array this query already scoped, so they add no authorization surface.
+export default async function ContratosPage({ searchParams }: ContratosPageProps) {
   const session = await auth();
   if (!session) {
     redirect("/login");
@@ -31,75 +36,60 @@ export default async function ContratosPage() {
   const db = scopeToOwner(session);
   const contracts = await db.contract.findMany({
     orderBy: { createdAt: "desc" },
-    include: { createdBy: { select: { name: true } } },
+    include: {
+      createdBy: { select: { name: true } },
+      priceList: { select: { name: true } },
+    },
   });
+
+  // Decimal is not serializable across the RSC boundary -> Number().
+  // eventDate is formatted here, not on the client, so the server's ICU is
+  // the only one that ever runs (no hydration locale mismatch).
+  const rows: ContractRow[] = contracts.map((contract) => ({
+    id: contract.id,
+    folio: contract.folio,
+    clientName: contract.clientName,
+    eventType: contract.eventType,
+    eventDateLabel: dateFormatter.format(contract.eventDate),
+    contractStatus: contract.contractStatus,
+    paymentStatus: contract.paymentStatus,
+    balance: Number(contract.balance),
+    priceListId: contract.priceListId,
+    priceListName: contract.priceList.name,
+    createdByName: contract.createdBy.name,
+  }));
+
+  const { estado, q, tipoEvento, listaPrecios, estatusPago } = await searchParams;
+
+  const isSuper = session.user.role === "super";
 
   return (
     <>
       <PageHeader
         title="Contratos"
         subtitle={
-          session.user.role === "super"
-            ? "Todos los contratos del sistema."
-            : "Sus contratos creados."
+          isSuper
+            ? `Todos los contratos del sistema (${rows.length}).`
+            : `Sus contratos creados (${rows.length}).`
         }
         actions={
-          <Button render={<Link href="/contratos/nuevo" />}>Nuevo contrato</Button>
+          <Button size="lg" render={<Link href="/contratos/nuevo" />}>
+            Nuevo contrato
+          </Button>
         }
       />
       <div className="mx-auto w-full max-w-[1280px] px-7 py-6">
-        <div className="overflow-x-auto rounded-lg ring-1 ring-foreground/10 shadow-sm">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Folio</TableHead>
-                <TableHead>Cliente</TableHead>
-                <TableHead>Evento</TableHead>
-                <TableHead>Fecha</TableHead>
-                <TableHead>Estado</TableHead>
-                <TableHead>Pago</TableHead>
-                <TableHead className="text-right">Saldo</TableHead>
-                {session.user.role === "super" && <TableHead>Creado por</TableHead>}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {contracts.length === 0 && (
-                <TableRow>
-                  <TableCell
-                    colSpan={session.user.role === "super" ? 8 : 7}
-                    className="text-center text-muted-foreground"
-                  >
-                    Ningún contrato coincide con los filtros.
-                  </TableCell>
-                </TableRow>
-              )}
-              {contracts.map((contract) => (
-                <TableRow key={contract.id}>
-                  <TableCell className="font-mono text-sm">
-                    <Link href={`/contratos/${contract.id}`} className="hover:underline">
-                      {contract.folio}
-                    </Link>
-                  </TableCell>
-                  <TableCell>{contract.clientName}</TableCell>
-                  <TableCell>{contract.eventType}</TableCell>
-                  <TableCell>{dateFormatter.format(contract.eventDate)}</TableCell>
-                  <TableCell>
-                    <StatusPill kind="contrato" value={contract.contractStatus} />
-                  </TableCell>
-                  <TableCell>
-                    <StatusPill kind="pago" value={contract.paymentStatus} />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Money amount={Number(contract.balance)} />
-                  </TableCell>
-                  {session.user.role === "super" && (
-                    <TableCell>{contract.createdBy.name}</TableCell>
-                  )}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+        <ContractsListView
+          contracts={rows}
+          showCreatedBy={isSuper}
+          initialFilters={{
+            estado: estado ?? "todos",
+            q: q ?? "",
+            tipoEvento: tipoEvento ?? "todos",
+            listaPrecios: listaPrecios ?? "todos",
+            estatusPago: estatusPago ?? "todos",
+          }}
+        />
       </div>
     </>
   );

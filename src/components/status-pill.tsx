@@ -26,7 +26,7 @@ const PAYMENT_STATUS_VARIANT: Record<PaymentStatus, "success" | "warning" | "dan
   pending: "danger",
 };
 
-const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = {
+export const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = {
   paid_in_full: "Pagado",
   deposit_paid: "Anticipo pagado",
   partial: "Pago parcial",
@@ -40,13 +40,13 @@ type StatusPillProps =
 export function StatusPill(props: StatusPillProps) {
   if (props.kind === "contrato") {
     return (
-      <Badge variant={CONTRACT_STATUS_VARIANT[props.value]}>
+      <Badge variant={CONTRACT_STATUS_VARIANT[props.value]} dot>
         {CONTRACT_STATUS_LABEL[props.value]}
       </Badge>
     );
   }
   return (
-    <Badge variant={PAYMENT_STATUS_VARIANT[props.value]}>
+    <Badge variant={PAYMENT_STATUS_VARIANT[props.value]} dot>
       {PAYMENT_STATUS_LABEL[props.value]}
     </Badge>
   );

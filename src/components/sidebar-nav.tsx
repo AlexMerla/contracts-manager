@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { PanelLeft, PanelLeftClose } from "lucide-react";
 
-import { NAV_GROUP_ORDER, navItemsForRole, type NavGroup } from "@/lib/navigation";
+import { APP_WORDMARK, NAV_GROUP_ORDER, navItemsForRole, type NavGroup } from "@/lib/navigation";
 import { NAV_ICONS } from "@/components/nav-icons";
 import { Icon } from "@/components/ui/icon";
 import { Separator } from "@/components/ui/separator";
@@ -34,13 +34,23 @@ export function SidebarNav({ user, collapsed, onToggleCollapse }: SidebarNavProp
 
   return (
     <nav className="flex h-full flex-col gap-1 p-2">
-      <div className={cn("flex items-center px-2 py-2", collapsed ? "justify-center" : "justify-end")}>
+      <div
+        className={cn(
+          "flex items-center gap-2 px-2 py-2",
+          collapsed ? "justify-center" : "justify-between"
+        )}
+      >
+        {!collapsed ? (
+          <span className="truncate font-heading text-sm font-semibold text-[var(--brand-700)] dark:text-[var(--brand-500)]">
+            {APP_WORDMARK}
+          </span>
+        ) : null}
         <button
           type="button"
           onClick={onToggleCollapse}
           aria-label={collapsed ? "Expandir menú" : "Contraer menú"}
           aria-expanded={!collapsed}
-          className="flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+          className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground"
         >
           <Icon icon={collapsed ? PanelLeft : PanelLeftClose} />
         </button>

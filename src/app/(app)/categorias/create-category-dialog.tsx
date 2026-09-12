@@ -66,7 +66,7 @@ export function CreateCategoryDialog() {
         }
       }}
     >
-      <DialogTrigger render={<Button>Crear categoría</Button>} />
+      <DialogTrigger render={<Button size="lg">Crear categoría</Button>} />
       <DialogContent>
         <form onSubmit={handleSubmit(onSubmit)} noValidate>
           <DialogHeader>

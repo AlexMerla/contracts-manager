@@ -186,7 +186,12 @@ export default async function ContratoDetailPage({ params }: ContratoDetailPageP
             )}
             <AmountRow label="Total" amount={Number(contract.total)} emphasize />
             <AmountRow label="Anticipo" amount={Number(contract.deposit)} />
-            <AmountRow label="Saldo" amount={Number(contract.balance)} emphasize />
+            <AmountRow
+              label="Saldo"
+              amount={Number(contract.balance)}
+              emphasize
+              tone={Number(contract.balance) > 0 ? "negative" : "muted"}
+            />
           </CardContent>
         </Card>
       </div>
@@ -209,10 +214,12 @@ function AmountRow({
   label,
   amount,
   emphasize = false,
+  tone,
 }: {
   label: string;
   amount: number;
   emphasize?: boolean;
+  tone?: "positive" | "negative" | "muted";
 }) {
   return (
     <div
@@ -223,7 +230,7 @@ function AmountRow({
       }
     >
       <span className={emphasize ? "" : "text-muted-foreground"}>{label}</span>
-      <Money amount={amount} />
+      <Money amount={amount} tone={tone} />
     </div>
   );
 }

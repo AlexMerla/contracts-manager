@@ -43,7 +43,7 @@ const createUserSchema = z.object({
 type CreateUserValues = z.infer<typeof createUserSchema>;
 
 const roleItems = {
-  normal: "Normal",
+  normal: "Usuario Normal",
   super: "Super Usuario",
 };
 
@@ -84,7 +84,7 @@ export function CreateUserDialog() {
         }
       }}
     >
-      <DialogTrigger render={<Button>Crear usuario</Button>} />
+      <DialogTrigger render={<Button size="lg">Crear usuario</Button>} />
       <DialogContent>
         <form onSubmit={handleSubmit(onSubmit)} noValidate>
           <DialogHeader>
@@ -129,7 +129,7 @@ export function CreateUserDialog() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="normal">Normal</SelectItem>
+                      <SelectItem value="normal">Usuario Normal</SelectItem>
                       <SelectItem value="super">Super Usuario</SelectItem>
                     </SelectContent>
                   </Select>

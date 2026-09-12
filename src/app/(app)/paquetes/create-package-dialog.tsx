@@ -106,7 +106,7 @@ export function CreatePackageDialog({ categories }: CreatePackageDialogProps) {
         }
       }}
     >
-      <DialogTrigger render={<Button>Crear paquete</Button>} />
+      <DialogTrigger render={<Button size="lg">Crear paquete</Button>} />
       <DialogContent>
         <form onSubmit={handleSubmit(onSubmit)} noValidate>
           <DialogHeader>

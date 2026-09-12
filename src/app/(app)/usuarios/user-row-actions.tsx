@@ -42,7 +42,7 @@ const editUserSchema = z.object({
 type EditUserValues = z.infer<typeof editUserSchema>;
 
 const roleItems = {
-  normal: "Normal",
+  normal: "Usuario Normal",
   super: "Super Usuario",
 };
 
@@ -137,7 +137,7 @@ export function UserRowActions({ user }: UserRowActionsProps) {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="normal">Normal</SelectItem>
+                        <SelectItem value="normal">Usuario Normal</SelectItem>
                         <SelectItem value="super">Super Usuario</SelectItem>
                       </SelectContent>
                     </Select>

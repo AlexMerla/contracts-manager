@@ -33,19 +33,53 @@ const badgeVariants = cva(
   }
 )
 
+// Solid dot tone per variant. Falls back to `bg-current` so the neutral
+// variants (default/secondary/outline/...) inherit the badge's own text color.
+const BADGE_DOT_TONE: Partial<Record<NonNullable<VariantProps<typeof badgeVariants>["variant"]>, string>> = {
+  success: "bg-success",
+  warning: "bg-warning",
+  danger: "bg-danger",
+  info: "bg-info",
+}
+
 function Badge({
   className,
   variant = "default",
+  dot = false,
   render,
+  children,
   ...props
-}: useRender.ComponentProps<"span"> & VariantProps<typeof badgeVariants>) {
+}: useRender.ComponentProps<"span"> &
+  VariantProps<typeof badgeVariants> & {
+    /** Render a solid status dot before the content (docs/design-system.md §2). */
+    dot?: boolean
+  }) {
   return useRender({
     defaultTagName: "span",
     props: mergeProps<"span">(
       {
         className: cn(badgeVariants({ variant }), className),
       },
-      props
+      props,
+      // `children` is merged LAST and is destructured out of `...props` above,
+      // so neither the caller's spread nor mergeProps can clobber the dot.
+      {
+        children: (
+          <>
+            {dot ? (
+              <span
+                aria-hidden="true"
+                data-slot="badge-dot"
+                className={cn(
+                  "size-1.5 shrink-0 rounded-full",
+                  (variant && BADGE_DOT_TONE[variant]) || "bg-current"
+                )}
+              />
+            ) : null}
+            {children}
+          </>
+        ),
+      }
     ),
     render,
     state: {

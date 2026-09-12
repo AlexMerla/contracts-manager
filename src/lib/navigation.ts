@@ -12,6 +12,10 @@ export type NavIconName =
 
 export type NavGroup = "Catálogo" | "Administración";
 
+// Short sidebar wordmark. Distinct from layout.tsx's metadata.title
+// ("Todo con un Solo Proveedor") — that long form stays as the document title.
+export const APP_WORDMARK = "Contratos TSP";
+
 export interface NavItem {
   readonly href: string;
   readonly label: string;
