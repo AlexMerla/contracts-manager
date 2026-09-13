@@ -3,18 +3,10 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { ForbiddenError, UnauthorizedError, requireRole } from "@/lib/authorization";
 import { prisma } from "@/lib/prisma";
-import {
-  Table,
-  TableHeader,
-  TableRow,
-  TableHead,
-  TableBody,
-  TableCell,
-} from "@/components/ui/table";
 import { PageHeader } from "@/components/page-header";
 
 import { CreateCategoryDialog } from "./create-category-dialog";
-import { CategoryRowActions } from "./category-row-actions";
+import { CategoriesListView } from "./categories-list-view";
 
 export default async function CategoriasPage() {
   const session = await auth();
@@ -36,6 +28,7 @@ export default async function CategoriasPage() {
 
   const categories = await prisma.category.findMany({
     orderBy: { name: "asc" },
+    include: { _count: { select: { packages: true, services: true } } },
   });
 
   return (
@@ -46,35 +39,14 @@ export default async function CategoriasPage() {
         actions={<CreateCategoryDialog />}
       />
       <div className="mx-auto w-full max-w-[1280px] px-7 py-6">
-        <div className="overflow-x-auto rounded-lg ring-1 ring-foreground/10 shadow-sm">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Nombre</TableHead>
-                <TableHead className="text-right">Acciones</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {categories.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={2} className="text-center text-muted-foreground">
-                    Ninguna categoría registrada todavía.
-                  </TableCell>
-                </TableRow>
-              )}
-              {categories.map((category) => (
-                <TableRow key={category.id}>
-                  <TableCell>{category.name}</TableCell>
-                  <TableCell>
-                    <CategoryRowActions
-                      category={{ id: category.id, name: category.name }}
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+        <CategoriesListView
+          categories={categories.map((category) => ({
+            id: category.id,
+            name: category.name,
+            packageCount: category._count.packages,
+            serviceCount: category._count.services,
+          }))}
+        />
       </div>
     </>
   );

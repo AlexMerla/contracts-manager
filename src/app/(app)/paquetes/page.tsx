@@ -3,21 +3,16 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { ForbiddenError, UnauthorizedError, requireRole } from "@/lib/authorization";
 import { prisma } from "@/lib/prisma";
-import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableHeader,
-  TableRow,
-  TableHead,
-  TableBody,
-  TableCell,
-} from "@/components/ui/table";
 import { PageHeader } from "@/components/page-header";
 
 import { CreatePackageDialog } from "./create-package-dialog";
-import { PackageRowActions } from "./package-row-actions";
+import { PackagesGridView } from "./packages-grid-view";
 
-export default async function PaquetesPage() {
+interface PaquetesPageProps {
+  searchParams: Promise<{ lista?: string }>;
+}
+
+export default async function PaquetesPage({ searchParams }: PaquetesPageProps) {
   const session = await auth();
 
   // Defense in depth alongside src/proxy.ts (spec §5).
@@ -33,10 +28,32 @@ export default async function PaquetesPage() {
     throw error;
   }
 
+  const priceLists = await prisma.priceList.findMany({
+    orderBy: { createdAt: "asc" },
+  });
+
+  const { lista } = await searchParams;
+  // D1: no price list is guaranteed `isDefault: true` in the real dev DB —
+  // every lookup falls back to the first list.
+  const defaultPriceList = priceLists.find((pl) => pl.isDefault) ?? priceLists[0];
+  const selectedPriceList =
+    priceLists.find((pl) => pl.id === lista) ?? defaultPriceList;
+
   const [packages, categories] = await Promise.all([
     prisma.package.findMany({
-      include: { category: true },
-      orderBy: { name: "asc" },
+      // D6: synthetic PQ-xx codes are derived from creation order — ordering
+      // by name would make the codes appear shuffled.
+      orderBy: { createdAt: "asc" },
+      include: {
+        category: true,
+        // catalogo/page.tsx's shape, not the shallower [id]/page.tsx shape —
+        // this grid needs service names for the card body.
+        packageServices: { include: { service: true } },
+        _count: { select: { contractPackages: true } },
+        packagePrices: selectedPriceList
+          ? { where: { priceListId: selectedPriceList.id } }
+          : false,
+      },
     }),
     prisma.category.findMany({ orderBy: { name: "asc" } }),
   ]);
@@ -56,49 +73,34 @@ export default async function PaquetesPage() {
         }
       />
       <div className="mx-auto w-full max-w-[1280px] px-7 py-6">
-        <div className="overflow-x-auto rounded-lg ring-1 ring-foreground/10 shadow-sm">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Nombre</TableHead>
-                <TableHead>Categoría</TableHead>
-                <TableHead>Cantidad</TableHead>
-                <TableHead>Estado</TableHead>
-                <TableHead className="text-right">Acciones</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {packages.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground">
-                    Ningún paquete registrado todavía.
-                  </TableCell>
-                </TableRow>
-              )}
-              {packages.map((pkg) => (
-                <TableRow key={pkg.id}>
-                  <TableCell>{pkg.name}</TableCell>
-                  <TableCell>{pkg.category.name}</TableCell>
-                  <TableCell>
-                    {pkg.maxQuantity
-                      ? `Hasta ${pkg.maxQuantity} ${pkg.quantityUnit ?? ""}`.trim()
-                      : "Cantidad fija (1)"}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={pkg.active ? "success" : "danger"}>
-                      {pkg.active ? "Activo" : "Inactivo"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <PackageRowActions
-                      pkg={{ id: pkg.id, name: pkg.name, active: pkg.active }}
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+        <PackagesGridView
+          packages={packages.map((pkg, index) => ({
+            id: pkg.id,
+            code: `PQ-${String(index + 1).padStart(2, "0")}`,
+            name: pkg.name,
+            description: pkg.description,
+            categoryId: pkg.categoryId,
+            categoryName: pkg.category.name,
+            quantityLabel: pkg.maxQuantity
+              ? `Hasta ${pkg.maxQuantity} ${pkg.quantityUnit ?? ""}`.trim()
+              : "Cantidad fija (1)",
+            active: pkg.active,
+            contractCount: pkg._count.contractPackages,
+            serviceNames: pkg.packageServices.map(({ service }) => service.name),
+            price: pkg.packagePrices[0] ? Number(pkg.packagePrices[0].price) : null,
+          }))}
+          categories={categories.map((category) => ({
+            id: category.id,
+            name: category.name,
+          }))}
+          priceLists={priceLists.map((pl) => ({
+            id: pl.id,
+            name: pl.name,
+            isDefault: pl.isDefault,
+          }))}
+          selectedPriceListId={selectedPriceList?.id ?? null}
+          selectedPriceListName={selectedPriceList?.name ?? null}
+        />
       </div>
     </>
   );
