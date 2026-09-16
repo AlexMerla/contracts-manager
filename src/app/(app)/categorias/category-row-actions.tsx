@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { MoreHorizontal } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,9 +21,14 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-  DialogTrigger,
   DialogClose,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 import { deleteCategory, updateCategory } from "./actions";
 
@@ -77,7 +83,26 @@ export function CategoryRowActions({ category }: CategoryRowActionsProps) {
   }
 
   return (
-    <div className="flex justify-end gap-2">
+    <div className="flex justify-end">
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={<Button variant="ghost" size="icon-sm" aria-label="Más acciones" />}
+        >
+          <MoreHorizontal />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={() => setEditOpen(true)}>
+            Editar
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            variant="destructive"
+            onClick={() => setDeleteOpen(true)}
+          >
+            Eliminar
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
       <Dialog
         open={editOpen}
         onOpenChange={(nextOpen) => {
@@ -88,9 +113,6 @@ export function CategoryRowActions({ category }: CategoryRowActionsProps) {
           }
         }}
       >
-        <DialogTrigger render={<Button variant="outline" size="sm" />}>
-          Editar
-        </DialogTrigger>
         <DialogContent>
           <form onSubmit={handleSubmit(onSubmit)} noValidate>
             <DialogHeader>
@@ -132,9 +154,6 @@ export function CategoryRowActions({ category }: CategoryRowActionsProps) {
           }
         }}
       >
-        <DialogTrigger render={<Button variant="destructive" size="sm" />}>
-          Eliminar
-        </DialogTrigger>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Eliminar categoría</DialogTitle>

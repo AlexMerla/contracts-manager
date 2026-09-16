@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { MoreHorizontal } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,9 +20,14 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-  DialogTrigger,
   DialogClose,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Select,
   SelectContent,
@@ -83,7 +89,30 @@ export function UserRowActions({ user }: UserRowActionsProps) {
   }
 
   return (
-    <div className="flex justify-end gap-2">
+    <div className="flex justify-end">
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={<Button variant="ghost" size="icon-sm" aria-label="Más acciones" />}
+        >
+          <MoreHorizontal />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={() => setOpen(true)}>
+            Editar
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={isTogglingActive}
+            onClick={() =>
+              startToggleActive(async () => {
+                await setUserActive(user.id, !user.active);
+              })
+            }
+          >
+            {user.active ? "Desactivar" : "Activar"}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
       <Dialog
         open={open}
         onOpenChange={(nextOpen) => {
@@ -94,9 +123,6 @@ export function UserRowActions({ user }: UserRowActionsProps) {
           }
         }}
       >
-        <DialogTrigger render={<Button variant="outline" size="sm" />}>
-          Editar
-        </DialogTrigger>
         <DialogContent>
           <form onSubmit={handleSubmit(onSubmit)} noValidate>
             <DialogHeader>
@@ -163,19 +189,6 @@ export function UserRowActions({ user }: UserRowActionsProps) {
           </form>
         </DialogContent>
       </Dialog>
-
-      <Button
-        variant={user.active ? "destructive" : "outline"}
-        size="sm"
-        disabled={isTogglingActive}
-        onClick={() =>
-          startToggleActive(async () => {
-            await setUserActive(user.id, !user.active);
-          })
-        }
-      >
-        {user.active ? "Desactivar" : "Activar"}
-      </Button>
     </div>
   );
 }

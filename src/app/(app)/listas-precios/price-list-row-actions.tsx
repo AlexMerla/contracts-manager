@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { MoreHorizontal } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,9 +21,14 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-  DialogTrigger,
   DialogClose,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 import {
   deletePriceList,
@@ -88,34 +94,47 @@ export function PriceListRowActions({ priceList }: PriceListRowActionsProps) {
   }
 
   return (
-    <div className="flex justify-end gap-2">
-      {!priceList.isDefault && (
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={isPending}
-          onClick={() =>
-            startTransition(async () => {
-              await setPriceListDefault(priceList.id);
-            })
-          }
+    <div className="flex justify-end">
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={<Button variant="ghost" size="icon-sm" aria-label="Más acciones" />}
         >
-          Marcar como predeterminada
-        </Button>
-      )}
-
-      <Button
-        variant={priceList.active ? "destructive" : "outline"}
-        size="sm"
-        disabled={isPending}
-        onClick={() =>
-          startTransition(async () => {
-            await setPriceListActive(priceList.id, !priceList.active);
-          })
-        }
-      >
-        {priceList.active ? "Desactivar" : "Activar"}
-      </Button>
+          <MoreHorizontal />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {!priceList.isDefault && (
+            <DropdownMenuItem
+              disabled={isPending}
+              onClick={() =>
+                startTransition(async () => {
+                  await setPriceListDefault(priceList.id);
+                })
+              }
+            >
+              Marcar como predeterminada
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem
+            disabled={isPending}
+            onClick={() =>
+              startTransition(async () => {
+                await setPriceListActive(priceList.id, !priceList.active);
+              })
+            }
+          >
+            {priceList.active ? "Desactivar" : "Activar"}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setEditOpen(true)}>
+            Editar
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            variant="destructive"
+            onClick={() => setDeleteOpen(true)}
+          >
+            Eliminar
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       <Dialog
         open={editOpen}
@@ -127,9 +146,6 @@ export function PriceListRowActions({ priceList }: PriceListRowActionsProps) {
           }
         }}
       >
-        <DialogTrigger render={<Button variant="outline" size="sm" />}>
-          Editar
-        </DialogTrigger>
         <DialogContent>
           <form onSubmit={handleSubmit(onSubmit)} noValidate>
             <DialogHeader>
@@ -173,9 +189,6 @@ export function PriceListRowActions({ priceList }: PriceListRowActionsProps) {
           }
         }}
       >
-        <DialogTrigger render={<Button variant="destructive" size="sm" />}>
-          Eliminar
-        </DialogTrigger>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Eliminar lista de precios</DialogTitle>

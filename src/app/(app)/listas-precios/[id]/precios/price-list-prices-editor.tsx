@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { MoneyInput } from "@/components/ui/money-input";
 import {
   Card,
   CardHeader,
@@ -83,13 +83,12 @@ function PriceRow({
       <TableCell>{pkg.packageName}</TableCell>
       <TableCell>{pkg.categoryName}</TableCell>
       <TableCell>
-        <Input
+        <MoneyInput
           value={value}
-          onChange={(event) => {
-            setValue(event.target.value);
+          onChange={(rawValue) => {
+            setValue(rawValue);
             setSaved(false);
           }}
-          inputMode="decimal"
           placeholder="Sin precio en esta lista"
           className="max-w-40"
           aria-label={`Precio de ${pkg.packageName}`}
