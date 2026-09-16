@@ -51,9 +51,15 @@ interface PriceListRowActionsProps {
     isDefault: boolean;
     active: boolean;
   };
+  onDuplicate?: () => void;
+  isDuplicating?: boolean;
 }
 
-export function PriceListRowActions({ priceList }: PriceListRowActionsProps) {
+export function PriceListRowActions({
+  priceList,
+  onDuplicate,
+  isDuplicating,
+}: PriceListRowActionsProps) {
   const [editOpen, setEditOpen] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -102,6 +108,11 @@ export function PriceListRowActions({ priceList }: PriceListRowActionsProps) {
           <MoreHorizontal />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          {onDuplicate && (
+            <DropdownMenuItem disabled={isDuplicating} onClick={onDuplicate}>
+              {isDuplicating ? "Duplicando…" : "Duplicar"}
+            </DropdownMenuItem>
+          )}
           {!priceList.isDefault && (
             <DropdownMenuItem
               disabled={isPending}

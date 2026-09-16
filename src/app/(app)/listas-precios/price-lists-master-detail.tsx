@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ListFilter, MoreHorizontal, Tags } from "lucide-react";
+import { ListFilter, Tags } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,12 +12,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
   Table,
@@ -169,22 +163,9 @@ export function PriceListsMasterDetail({
                   isDefault: selected.isDefault,
                   active: selected.active,
                 }}
+                onDuplicate={() => onDuplicate(selected.id)}
+                isDuplicating={isDuplicating}
               />
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  render={<Button variant="ghost" size="icon-sm" aria-label="Más acciones" />}
-                >
-                  <MoreHorizontal />
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem
-                    disabled={isDuplicating}
-                    onClick={() => onDuplicate(selected.id)}
-                  >
-                    {isDuplicating ? "Duplicando…" : "Duplicar"}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
             </div>
           </div>
         )}
