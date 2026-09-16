@@ -7,6 +7,7 @@ import { ForbiddenError, UnauthorizedError, requireRole } from "@/lib/authorizat
 import { prisma } from "@/lib/prisma";
 import { Icon } from "@/components/ui/icon";
 import { PageHeader } from "@/components/page-header";
+import { Tabs, TabsList, TabsTab, TabsPanel } from "@/components/ui/tabs";
 
 import { PackageBasicForm } from "./package-basic-form";
 import { PackageServicesEditor } from "./package-services-editor";
@@ -73,40 +74,58 @@ export default async function PaqueteDetailPage({
         }
       />
       <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-6 px-7 py-6">
-        <PackageBasicForm
-          pkg={{
-            id: pkg.id,
-            name: pkg.name,
-            description: pkg.description,
-            categoryId: pkg.categoryId,
-            maxQuantity: pkg.maxQuantity,
-            quantityUnit: pkg.quantityUnit,
-          }}
-          categories={categories.map((category) => ({
-            id: category.id,
-            name: category.name,
-          }))}
-        />
+        <Tabs defaultValue="datos">
+          <TabsList>
+            <TabsTab value="datos">Datos básicos</TabsTab>
+            <TabsTab value="servicios" count={selectedServiceIds.length}>
+              Servicios incluidos
+            </TabsTab>
+            <TabsTab value="precios" count={priceByListId.size}>
+              Precios
+            </TabsTab>
+          </TabsList>
 
-        <PackageServicesEditor
-          packageId={pkg.id}
-          services={services.map((service) => ({
-            id: service.id,
-            name: service.name,
-            categoryName: service.category.name,
-          }))}
-          selectedServiceIds={selectedServiceIds}
-        />
+          <TabsPanel value="datos">
+            <PackageBasicForm
+              pkg={{
+                id: pkg.id,
+                name: pkg.name,
+                description: pkg.description,
+                categoryId: pkg.categoryId,
+                maxQuantity: pkg.maxQuantity,
+                quantityUnit: pkg.quantityUnit,
+              }}
+              categories={categories.map((category) => ({
+                id: category.id,
+                name: category.name,
+              }))}
+            />
+          </TabsPanel>
 
-        <PackagePricesEditor
-          packageId={pkg.id}
-          priceLists={priceLists.map((priceList) => ({
-            id: priceList.id,
-            name: priceList.name,
-            isDefault: priceList.isDefault,
-            price: priceByListId.get(priceList.id) ?? null,
-          }))}
-        />
+          <TabsPanel value="servicios">
+            <PackageServicesEditor
+              packageId={pkg.id}
+              services={services.map((service) => ({
+                id: service.id,
+                name: service.name,
+                categoryName: service.category.name,
+              }))}
+              selectedServiceIds={selectedServiceIds}
+            />
+          </TabsPanel>
+
+          <TabsPanel value="precios">
+            <PackagePricesEditor
+              packageId={pkg.id}
+              priceLists={priceLists.map((priceList) => ({
+                id: priceList.id,
+                name: priceList.name,
+                isDefault: priceList.isDefault,
+                price: priceByListId.get(priceList.id) ?? null,
+              }))}
+            />
+          </TabsPanel>
+        </Tabs>
       </div>
     </>
   );

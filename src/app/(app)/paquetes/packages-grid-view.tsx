@@ -123,6 +123,18 @@ export function PackagesGridView({
     ? `PRECIO EN ${selectedPriceListName.toUpperCase()}`
     : "PRECIO";
 
+  const categoryItems = {
+    [ALL]: "Todas las categorías",
+    ...Object.fromEntries(categories.map((category) => [category.id, category.name])),
+  };
+
+  const priceListItems = Object.fromEntries(
+    priceLists.map((priceList) => [
+      priceList.id,
+      priceList.isDefault ? `${priceList.name} (predeterminada)` : priceList.name,
+    ])
+  );
+
   return (
     <Tabs value={tab} onValueChange={(value) => setTab(String(value))}>
       <TabsList>
@@ -143,7 +155,11 @@ export function PackagesGridView({
           className="w-64"
         />
 
-        <Select value={categoryId} onValueChange={(value) => setCategoryId(String(value))}>
+        <Select
+          items={categoryItems}
+          value={categoryId}
+          onValueChange={(value) => setCategoryId(String(value))}
+        >
           <SelectTrigger className="w-48" aria-label="Categoría">
             <SelectValue />
           </SelectTrigger>
@@ -158,7 +174,11 @@ export function PackagesGridView({
         </Select>
 
         {priceLists.length > 0 && selectedPriceListId && (
-          <Select value={selectedPriceListId} onValueChange={(value) => onPriceListChange(String(value))}>
+          <Select
+            items={priceListItems}
+            value={selectedPriceListId}
+            onValueChange={(value) => onPriceListChange(String(value))}
+          >
             <SelectTrigger className="w-48" aria-label="Precios según">
               <SelectValue />
             </SelectTrigger>

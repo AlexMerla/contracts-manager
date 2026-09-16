@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { ConciergeBell } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -13,6 +15,7 @@ import {
   CardContent,
   CardFooter,
 } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 
 import { setPackageServices } from "../actions";
 
@@ -84,36 +87,48 @@ export function PackageServicesEditor({
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {services.length === 0 && (
-          <p className="text-sm text-muted-foreground">
-            Ningún servicio registrado todavía.
-          </p>
+        {services.length === 0 ? (
+          <EmptyState
+            icon={ConciergeBell}
+            title="Ningún servicio registrado todavía."
+          />
+        ) : (
+          <div className="flex flex-col gap-4">
+            {Object.entries(groupedByCategory).map(([categoryName, items]) => {
+              const selectedInCategory = items.filter((service) =>
+                selected.has(service.id)
+              ).length;
+              return (
+                <div key={categoryName} className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                      {categoryName}
+                    </p>
+                    <Badge variant="secondary">
+                      {selectedInCategory}/{items.length}
+                    </Badge>
+                  </div>
+                  {items.map((service) => (
+                    <Label
+                      key={service.id}
+                      htmlFor={`service-${service.id}`}
+                      className="font-normal"
+                    >
+                      <Checkbox
+                        id={`service-${service.id}`}
+                        checked={selected.has(service.id)}
+                        onCheckedChange={(checked) =>
+                          toggle(service.id, checked === true)
+                        }
+                      />
+                      {service.name}
+                    </Label>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
         )}
-        <div className="flex flex-col gap-4">
-          {Object.entries(groupedByCategory).map(([categoryName, items]) => (
-            <div key={categoryName} className="flex flex-col gap-2">
-              <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                {categoryName}
-              </p>
-              {items.map((service) => (
-                <Label
-                  key={service.id}
-                  htmlFor={`service-${service.id}`}
-                  className="font-normal"
-                >
-                  <Checkbox
-                    id={`service-${service.id}`}
-                    checked={selected.has(service.id)}
-                    onCheckedChange={(checked) =>
-                      toggle(service.id, checked === true)
-                    }
-                  />
-                  {service.name}
-                </Label>
-              ))}
-            </div>
-          ))}
-        </div>
 
         {formError && (
           <p role="alert" className="mt-4 text-sm font-normal text-destructive">

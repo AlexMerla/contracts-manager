@@ -155,6 +155,13 @@ export function PriceListsMasterDetail({
               )}
             </div>
             <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                render={<Link href={`/listas-precios/${selected.id}/precios`} />}
+              >
+                Editar precios
+              </Button>
               <PriceListRowActions
                 priceList={{
                   id: selected.id,

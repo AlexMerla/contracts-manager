@@ -57,6 +57,7 @@ export function StepServices({
             <Field key={service.id}>
               <FieldLabel htmlFor={`service-${service.id}`}>{service.name}</FieldLabel>
               <Select
+                items={Object.fromEntries(service.options.map((option) => [option, option]))}
                 value={selections[service.id] ?? ""}
                 onValueChange={(value) => onChange(service.id, value ?? "")}
               >

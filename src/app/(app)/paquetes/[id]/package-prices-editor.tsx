@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { Tags } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import {
   CardDescription,
   CardContent,
 } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import {
   Table,
   TableHeader,
@@ -128,9 +130,10 @@ export function PackagePricesEditor({
       </CardHeader>
       <CardContent>
         {priceLists.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Ninguna lista de precios registrada todavía.
-          </p>
+          <EmptyState
+            icon={Tags}
+            title="Ninguna lista de precios registrada todavía."
+          />
         ) : (
           <div className="overflow-x-auto rounded-lg ring-1 ring-foreground/10 shadow-sm">
             <Table>

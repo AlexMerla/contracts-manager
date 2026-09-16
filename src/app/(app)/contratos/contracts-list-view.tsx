@@ -169,6 +169,26 @@ export function ContractsListView({
 
   const columnCount = showCreatedBy ? 8 : 7;
 
+  const eventTypeItems = {
+    [ALL]: "Todos los eventos",
+    ...Object.fromEntries(eventTypeOptions.map((option) => [option, option])),
+  };
+
+  const priceListItems = {
+    [ALL]: "Todas las listas",
+    ...Object.fromEntries(priceListOptions.map((option) => [option.id, option.name])),
+  };
+
+  const paymentStatusItems = {
+    [ALL]: "Todos los pagos",
+    ...Object.fromEntries(
+      (Object.keys(PAYMENT_STATUS_LABEL) as PaymentStatus[]).map((status) => [
+        status,
+        PAYMENT_STATUS_LABEL[status],
+      ])
+    ),
+  };
+
   return (
     <Tabs value={estado} onValueChange={(value) => setEstado(String(value))}>
       <TabsList>
@@ -189,7 +209,11 @@ export function ContractsListView({
           className="w-64"
         />
 
-        <Select value={tipoEvento} onValueChange={(value) => setTipoEvento(String(value))}>
+        <Select
+          items={eventTypeItems}
+          value={tipoEvento}
+          onValueChange={(value) => setTipoEvento(String(value))}
+        >
           <SelectTrigger className="w-48" aria-label="Tipo de evento">
             <SelectValue />
           </SelectTrigger>
@@ -203,7 +227,11 @@ export function ContractsListView({
           </SelectContent>
         </Select>
 
-        <Select value={listaPrecios} onValueChange={(value) => setListaPrecios(String(value))}>
+        <Select
+          items={priceListItems}
+          value={listaPrecios}
+          onValueChange={(value) => setListaPrecios(String(value))}
+        >
           <SelectTrigger className="w-48" aria-label="Lista de precios">
             <SelectValue />
           </SelectTrigger>
@@ -217,7 +245,11 @@ export function ContractsListView({
           </SelectContent>
         </Select>
 
-        <Select value={estatusPago} onValueChange={(value) => setEstatusPago(String(value))}>
+        <Select
+          items={paymentStatusItems}
+          value={estatusPago}
+          onValueChange={(value) => setEstatusPago(String(value))}
+        >
           <SelectTrigger className="w-48" aria-label="Estatus de pago">
             <SelectValue />
           </SelectTrigger>

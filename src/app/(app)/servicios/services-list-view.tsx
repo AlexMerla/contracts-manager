@@ -47,6 +47,11 @@ export function ServicesListView({ services, categories }: ServicesListViewProps
   const [query, setQuery] = useState("");
   const [categoryId, setCategoryId] = useState(ALL);
 
+  const categoryItems = {
+    [ALL]: "Todas las categorías",
+    ...Object.fromEntries(categories.map((category) => [category.id, category.name])),
+  };
+
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return services.filter((service) => {
@@ -68,7 +73,11 @@ export function ServicesListView({ services, categories }: ServicesListViewProps
           className="w-64"
         />
 
-        <Select value={categoryId} onValueChange={(value) => setCategoryId(String(value))}>
+        <Select
+          items={categoryItems}
+          value={categoryId}
+          onValueChange={(value) => setCategoryId(String(value))}
+        >
           <SelectTrigger className="w-48" aria-label="Categoría">
             <SelectValue />
           </SelectTrigger>
