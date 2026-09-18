@@ -49,6 +49,17 @@ enum PaymentMethod {
   @@map("payment_method")
 }
 
+enum EventType {
+  quinceanera
+  wedding
+  birthday
+  graduation
+  posada
+  other
+
+  @@map("event_type")
+}
+
 // ---------------------------------------------------------------------------
 // 6.1 users — email + password only, no Google sign-in (spec §4.3, corrected
 // 2026-09-05). password_hash is required; accounts are created by a `super`
@@ -123,7 +134,7 @@ model Contract {
   clientMobile       String?        @map("client_mobile")
   clientEmail        String?        @map("client_email")
   clientAddress      String?        @map("client_address")
-  eventType          String         @map("event_type")
+  eventType          EventType      @map("event_type")
   celebrated         String?
   eventDate          DateTime       @map("event_date") @db.Date
   eventTime          DateTime?      @map("event_time") @db.Time(6)

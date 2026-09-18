@@ -27,7 +27,7 @@ const dummyPayload: CreateContractPayload = {
     clientMobile: "",
     clientEmail: "",
     clientAddress: "",
-    eventType: "x",
+    eventType: "other",
     celebrated: "",
     eventDate: "2027-01-01",
     eventTime: "",

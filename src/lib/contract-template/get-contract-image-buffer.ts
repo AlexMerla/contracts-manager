@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { EVENT_TYPE_LABEL } from "@/lib/event-type";
 
 import { generateContractImage, type ContractImageData } from "./generate-contract-image";
 
@@ -36,7 +37,7 @@ export async function getContractImageBuffer(contractId: string): Promise<Buffer
     eventDate: contract.eventDate,
     eventTime: contract.eventTime,
     clientName: contract.clientName,
-    eventType: contract.eventType,
+    eventType: EVENT_TYPE_LABEL[contract.eventType],
     clientAddress: contract.clientAddress,
     celebrated: contract.celebrated,
     clientEmail: contract.clientEmail,

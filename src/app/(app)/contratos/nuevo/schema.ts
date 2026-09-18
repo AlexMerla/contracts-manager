@@ -10,12 +10,15 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export const contractDataSchema = z.object({
   clientName: z.string().min(1, "Ingrese el nombre del cliente."),
   clientPhone: z.string(),
-  clientMobile: z.string(),
+  clientMobile: z.string().min(1, "Ingrese el celular."),
   clientEmail: z
     .string()
-    .refine((value) => value === "" || EMAIL_PATTERN.test(value), "Ingrese un correo válido."),
+    .min(1, "Ingrese el correo.")
+    .refine((value) => EMAIL_PATTERN.test(value), "Ingrese un correo válido."),
   clientAddress: z.string(),
-  eventType: z.string().min(1, "Ingrese el tipo de evento."),
+  eventType: z.enum(["quinceanera", "wedding", "birthday", "graduation", "posada", "other"], {
+    message: "Seleccione el tipo de evento.",
+  }),
   celebrated: z.string(),
   eventDate: z.string().min(1, "Seleccione la fecha del evento."),
   eventTime: z.string(),

@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+import { WizardStepFooter } from "./wizard-step-footer";
 import type { CatalogServiceRef } from "../types";
 
 interface StepServicesProps {
@@ -77,14 +78,14 @@ export function StepServices({
         </CardContent>
       </Card>
 
-      <div className="flex justify-between">
+      <WizardStepFooter>
         <Button type="button" variant="ghost" onClick={onBack}>
           Atrás
         </Button>
         <Button type="button" disabled={!allSelected} onClick={onNext}>
           Continuar
         </Button>
-      </div>
+      </WizardStepFooter>
     </div>
   );
 }

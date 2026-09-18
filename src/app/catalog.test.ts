@@ -307,7 +307,7 @@ describe("deletePackage (sprint-03 task 3 / task 7)", () => {
         id: contractId,
         folio: `CT-TEST-${contractId.slice(0, 8)}`,
         clientName: "Cliente de prueba",
-        eventType: "boda",
+        eventType: "wedding",
         eventDate: new Date("2026-12-01"),
         subtotal: 100,
         total: 100,

@@ -1,6 +1,7 @@
 "use client";
 
-import { Minus, Plus, X } from "lucide-react";
+import { useMemo, useState } from "react";
+import { ListFilter, Minus, PackageSearch, Plus } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,10 +11,23 @@ import {
   CardTitle,
   CardDescription,
   CardContent,
+  CardFooter,
 } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Icon } from "@/components/ui/icon";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Money } from "@/components/money";
+import { cn } from "@/lib/utils";
 
+import { WizardStepFooter } from "./wizard-step-footer";
 import type { CatalogCategory, CatalogPackage, OrderLine } from "../types";
 
 interface StepPackagesProps {
@@ -27,10 +41,18 @@ interface StepPackagesProps {
   onNext: () => void;
 }
 
-// Spec §8 step 2 / sprint-04 task 2: store-style catalog grouped by
-// category, packages addable to an in-progress order, bounded quantity
-// selector for packages with `maxQuantity`. All client-side state — no
-// database write happens until the wizard's final confirm step.
+const ALL = "todas";
+
+// Spec §8 step 2 / sprint-04 task 2: store-style catalog, packages addable to
+// an in-progress order, bounded quantity selector for packages with
+// `maxQuantity`. All client-side state — no database write happens until the
+// wizard's final confirm step.
+//
+// The grid is FLAT (one grid over every package, category shown as a badge)
+// rather than one grid per category heading: with the category filter below,
+// per-category sections would be a second, redundant grouping of the same
+// axis. The running order summary that used to live at the bottom of this
+// step is gone — the wizard's persistent `OrderSummaryPanel` supersedes it.
 export function StepPackages({
   categories,
   priceListId,
@@ -41,89 +63,105 @@ export function StepPackages({
   onBack,
   onNext,
 }: StepPackagesProps) {
-  const lineByPackageId = new Map(orderLines.map((line) => [line.packageId, line]));
-  const categoriesWithPackages = categories.filter((category) => category.packages.length > 0);
+  const [categoryId, setCategoryId] = useState(ALL);
 
-  const summaryLines = orderLines
-    .map((line) => {
-      const pkg = categories
-        .flatMap((category) => category.packages)
-        .find((candidate) => candidate.id === line.packageId);
-      if (!pkg) {
-        return null;
-      }
-      const unitPrice = pkg.pricesByPriceListId[priceListId] ?? 0;
-      return { pkg, line, unitPrice, lineTotal: unitPrice * line.quantity };
-    })
-    .filter((entry): entry is NonNullable<typeof entry> => entry != null);
+  const lineByPackageId = useMemo(
+    () => new Map(orderLines.map((line) => [line.packageId, line])),
+    [orderLines]
+  );
 
-  const subtotal = summaryLines.reduce((sum, entry) => sum + entry.lineTotal, 0);
+  // `categories` arrives ALREADY filtered by page.tsx (categories with no
+  // active package are dropped there). Re-filtering here — as this file used
+  // to — duplicates that rule in a second place where it can silently drift.
+  const allPackages = useMemo(
+    () => categories.flatMap((category) => category.packages),
+    [categories]
+  );
+
+  const filtered = useMemo(
+    () =>
+      categoryId === ALL
+        ? allPackages
+        : allPackages.filter((pkg) => pkg.categoryId === categoryId),
+    [allPackages, categoryId]
+  );
+
+  // `items` is MANDATORY on every `Select` in this codebase: without it the
+  // closed Base UI trigger renders the raw `value` (a uuid) instead of the
+  // label. Recurring bug — do not drop it.
+  const categoryItems = {
+    [ALL]: "Todas las categorías",
+    ...Object.fromEntries(categories.map((category) => [category.id, category.name])),
+  };
+
+  const selectedCount = orderLines.length;
 
   return (
     <div className="flex flex-col gap-6">
-      {categoriesWithPackages.length === 0 && (
-        <p className="text-sm text-muted-foreground">
-          Ningún paquete activo disponible en esta lista de precios.
-        </p>
-      )}
-
-      {categoriesWithPackages.map((category) => (
-        <div key={category.id} className="flex flex-col gap-3">
-          <h2 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            {category.name}
-          </h2>
-          <div className="grid gap-4 sm:grid-cols-2">
-            {category.packages.map((pkg) => (
-              <PackageCard
-                key={pkg.id}
-                pkg={pkg}
-                priceListId={priceListId}
-                line={lineByPackageId.get(pkg.id) ?? null}
-                onAdd={() => onAdd(pkg.id)}
-                onRemove={() => onRemove(pkg.id)}
-                onSetQuantity={(quantity) => onSetQuantity(pkg.id, quantity)}
-              />
-            ))}
-          </div>
-        </div>
-      ))}
-
       <Card>
         <CardHeader>
-          <CardTitle>Resumen del pedido</CardTitle>
-          <CardDescription>
-            {summaryLines.length === 0
-              ? "Ningún paquete agregado todavía."
-              : `${summaryLines.length} ${summaryLines.length === 1 ? "paquete" : "paquetes"} en el pedido.`}
-          </CardDescription>
+          <CardTitle>Paquetes del contrato</CardTitle>
+          <CardDescription>Puede combinar más de un paquete.</CardDescription>
         </CardHeader>
-        {summaryLines.length > 0 && (
-          <CardContent className="flex flex-col gap-2">
-            {summaryLines.map(({ pkg, line, lineTotal }) => (
-              <div key={pkg.id} className="flex items-center justify-between text-sm">
-                <span>
-                  {pkg.name}
-                  {pkg.maxQuantity ? ` × ${line.quantity}` : ""}
-                </span>
-                <Money amount={lineTotal} />
-              </div>
-            ))}
-            <div className="mt-2 flex items-center justify-between border-t pt-2 text-sm font-semibold">
-              <span>Subtotal</span>
-              <Money amount={subtotal} />
+        <CardContent className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <Select
+              items={categoryItems}
+              value={categoryId}
+              onValueChange={(value) => setCategoryId(String(value))}
+            >
+              <SelectTrigger className="w-56" aria-label="Categoría">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>Todas las categorías</SelectItem>
+                {categories.map((category) => (
+                  <SelectItem key={category.id} value={category.id}>
+                    {category.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <p className="text-sm text-muted-foreground">
+              {selectedCount} {selectedCount === 1 ? "seleccionado" : "seleccionados"}
+            </p>
+          </div>
+
+          {allPackages.length === 0 ? (
+            <EmptyState
+              icon={PackageSearch}
+              title="Ningún paquete activo disponible."
+              description="Pida al Super Usuario que active un paquete antes de armar el pedido."
+            />
+          ) : filtered.length === 0 ? (
+            <EmptyState icon={ListFilter} title="Ningún paquete en esta categoría." />
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {filtered.map((pkg) => (
+                <PackageCard
+                  key={pkg.id}
+                  pkg={pkg}
+                  priceListId={priceListId}
+                  line={lineByPackageId.get(pkg.id) ?? null}
+                  onAdd={() => onAdd(pkg.id)}
+                  onRemove={() => onRemove(pkg.id)}
+                  onSetQuantity={(quantity) => onSetQuantity(pkg.id, quantity)}
+                />
+              ))}
             </div>
-          </CardContent>
-        )}
+          )}
+        </CardContent>
       </Card>
 
-      <div className="flex justify-between">
+      <WizardStepFooter>
         <Button type="button" variant="ghost" onClick={onBack}>
           Atrás
         </Button>
         <Button type="button" disabled={orderLines.length === 0} onClick={onNext}>
           Continuar
         </Button>
-      </div>
+      </WizardStepFooter>
     </div>
   );
 }
@@ -140,13 +178,16 @@ interface PackageCardProps {
 function PackageCard({ pkg, priceListId, line, onAdd, onRemove, onSetQuantity }: PackageCardProps) {
   const price = pkg.pricesByPriceListId[priceListId] ?? null;
   const inOrder = line != null;
+  const checkboxId = `package-${pkg.id}`;
 
   return (
-    <Card>
+    <Card className={cn("h-full", inOrder && "ring-2 ring-foreground")}>
       <CardHeader>
+        <span className="font-mono text-xs text-muted-foreground">{pkg.code}</span>
         <CardTitle>{pkg.name}</CardTitle>
         {pkg.description && <CardDescription>{pkg.description}</CardDescription>}
       </CardHeader>
+
       <CardContent className="flex flex-col gap-3">
         <Money
           amount={price}
@@ -154,24 +195,33 @@ function PackageCard({ pkg, priceListId, line, onAdd, onRemove, onSetQuantity }:
           className="font-heading text-lg font-semibold"
         />
 
-        {pkg.services.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {pkg.services.map((service) => (
-              <Badge key={service.id} variant="secondary">
-                {service.name}
-              </Badge>
-            ))}
-          </div>
-        )}
+        <div className="flex flex-wrap gap-1.5">
+          <Badge variant="secondary">{pkg.categoryName}</Badge>
+          {pkg.services.map((service) => (
+            <Badge key={service.id} variant="outline">
+              {service.name}
+            </Badge>
+          ))}
+        </div>
+      </CardContent>
 
-        {!inOrder && (
-          <Button type="button" size="sm" disabled={price == null} onClick={onAdd}>
-            Agregar
-          </Button>
-        )}
+      {/* Selection and quantity are ONE control row: the checkbox owns
+          "is it in the order", the stepper (only for packages that have a
+          `maxQuantity`) owns "how many". The old separate Agregar / Quitar
+          del pedido buttons are gone. */}
+      <CardFooter className="flex flex-wrap items-center justify-between gap-2">
+        <Label htmlFor={checkboxId} className="font-normal">
+          <Checkbox
+            id={checkboxId}
+            checked={inOrder}
+            disabled={price == null}
+            onCheckedChange={(checked) => (checked === true ? onAdd() : onRemove())}
+          />
+          {inOrder ? "En el pedido" : "Agregar"}
+        </Label>
 
         {inOrder && pkg.maxQuantity != null && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             <Button
               type="button"
               variant="outline"
@@ -195,26 +245,9 @@ function PackageCard({ pkg, priceListId, line, onAdd, onRemove, onSetQuantity }:
             >
               <Icon icon={Plus} />
             </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              className="ml-auto"
-              onClick={onRemove}
-              aria-label={`Quitar ${pkg.name} del pedido`}
-            >
-              <Icon icon={X} />
-            </Button>
           </div>
         )}
-
-        {inOrder && pkg.maxQuantity == null && (
-          <Button type="button" variant="ghost" size="sm" className="self-start" onClick={onRemove}>
-            <Icon icon={X} />
-            Quitar del pedido
-          </Button>
-        )}
-      </CardContent>
+      </CardFooter>
     </Card>
   );
 }

@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 
 import { auth } from "@/lib/auth";
 import { scopeToOwner } from "@/lib/authorization";
+import { EVENT_TYPE_LABEL } from "@/lib/event-type";
 import { Icon } from "@/components/ui/icon";
 import {
   Card,
@@ -97,7 +98,7 @@ export default async function ContratoDetailPage({ params }: ContratoDetailPageP
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
             <DetailField label="Cliente" value={contract.clientName} />
-            <DetailField label="Tipo de evento" value={contract.eventType} />
+            <DetailField label="Tipo de evento" value={EVENT_TYPE_LABEL[contract.eventType]} />
             <DetailField label="Festejado(s)" value={contract.celebrated} />
             <DetailField
               label="Fecha del evento"

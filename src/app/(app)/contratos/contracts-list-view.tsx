@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { FileSearch } from "lucide-react";
 
-import type { ContractStatus, PaymentStatus } from "@/generated/prisma/client";
+import type { ContractStatus, EventType, PaymentStatus } from "@/generated/prisma/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -29,12 +29,13 @@ import { Money } from "@/components/money";
 // Single source of truth for the payment vocabulary — re-exported from
 // status-pill so the filter and the pill can never drift apart.
 import { PAYMENT_STATUS_LABEL, StatusPill } from "@/components/status-pill";
+import { EVENT_TYPE_LABEL } from "@/lib/event-type";
 
 export interface ContractRow {
   id: string;
   folio: string;
   clientName: string;
-  eventType: string;
+  eventType: EventType;
   eventDateLabel: string;
   contractStatus: ContractStatus;
   paymentStatus: PaymentStatus;
@@ -116,8 +117,9 @@ export function ContractsListView({
     return base;
   }, [contracts]);
 
-  // eventType is a free `String` in the Prisma schema, not an enum — the
-  // options have to come from the real data.
+  // eventType is now an `EventType` enum column, but the filter's options
+  // still only list the values that actually appear among loaded contracts
+  // — a distinct list derived from real data, not the full enum vocabulary.
   const eventTypeOptions = useMemo(
     () =>
       [...new Set(contracts.map((c) => c.eventType))].sort((a, b) =>
@@ -171,7 +173,7 @@ export function ContractsListView({
 
   const eventTypeItems = {
     [ALL]: "Todos los eventos",
-    ...Object.fromEntries(eventTypeOptions.map((option) => [option, option])),
+    ...Object.fromEntries(eventTypeOptions.map((option) => [option, EVENT_TYPE_LABEL[option]])),
   };
 
   const priceListItems = {
@@ -221,7 +223,7 @@ export function ContractsListView({
             <SelectItem value={ALL}>Todos los eventos</SelectItem>
             {eventTypeOptions.map((option) => (
               <SelectItem key={option} value={option}>
-                {option}
+                {EVENT_TYPE_LABEL[option]}
               </SelectItem>
             ))}
           </SelectContent>
@@ -305,7 +307,7 @@ export function ContractsListView({
                     </Link>
                   </TableCell>
                   <TableCell>{contract.clientName}</TableCell>
-                  <TableCell>{contract.eventType}</TableCell>
+                  <TableCell>{EVENT_TYPE_LABEL[contract.eventType]}</TableCell>
                   <TableCell>{contract.eventDateLabel}</TableCell>
                   <TableCell>
                     <StatusPill kind="contrato" value={contract.contractStatus} />

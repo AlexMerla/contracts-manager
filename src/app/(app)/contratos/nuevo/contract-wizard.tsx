@@ -4,15 +4,24 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { calculateDefaultDeposit, type DepositThresholds } from "@/lib/deposit";
+import { Stepper } from "@/components/ui/stepper";
+import { Card, CardContent } from "@/components/ui/card";
 
 import { createContract } from "../actions";
+import { OrderSummaryPanel } from "./order-summary-panel";
 import { StepPriceList } from "./steps/step-price-list";
 import { StepPackages } from "./steps/step-packages";
 import { StepServices } from "./steps/step-services";
 import { StepContractData } from "./steps/step-contract-data";
 import { StepConfirm } from "./steps/step-confirm";
 import type { ContractDataFormValues } from "./schema";
-import type { CatalogCategory, CatalogPackage, CatalogPriceList, OrderLine } from "./types";
+import type {
+  CatalogCategory,
+  CatalogPackage,
+  CatalogPriceList,
+  OrderLine,
+  QuotedLine,
+} from "./types";
 
 type StepNumber = 1 | 2 | 3 | 4 | 5;
 
@@ -73,13 +82,30 @@ export function ContractWizard({ priceLists, categories, depositThresholds }: Co
 
   const needsServiceStep = requiredServices.length > 0;
 
-  const subtotal = useMemo(
+  // ONE derivation of the priced order, consumed by both the persistent
+  // summary panel and step 5's "Servicios cotizados" table. Deriving it twice
+  // is exactly how the `PQ-xx` code or a line total would drift between the
+  // two surfaces.
+  const quotedLines = useMemo<QuotedLine[]>(
     () =>
-      packagesInOrder.reduce(
-        (sum, { line, pkg }) => sum + (pkg.pricesByPriceListId[priceListId] ?? 0) * line.quantity,
-        0
-      ),
+      packagesInOrder.map(({ line, pkg }) => {
+        const unitPrice = pkg.pricesByPriceListId[priceListId] ?? 0;
+        return {
+          packageId: pkg.id,
+          code: pkg.code,
+          name: pkg.name,
+          quantity: line.quantity,
+          quantityUnit: pkg.quantityUnit,
+          unitPrice,
+          lineTotal: unitPrice * line.quantity,
+        };
+      }),
     [packagesInOrder, priceListId]
+  );
+
+  const subtotal = useMemo(
+    () => quotedLines.reduce((sum, line) => sum + line.lineTotal, 0),
+    [quotedLines]
   );
 
   const total = subtotal - (discount ?? 0) + (extraCharge ?? 0);
@@ -88,6 +114,7 @@ export function ContractWizard({ priceLists, categories, depositThresholds }: Co
 
   function addPackage(packageId: string) {
     setOrderLines((current) => [...current, { packageId, quantity: 1 }]);
+    setDepositOverride(null);
   }
 
   function removePackage(packageId: string) {
@@ -103,6 +130,7 @@ export function ContractWizard({ priceLists, categories, depositThresholds }: Co
       }
       return next;
     });
+    setDepositOverride(null);
   }
 
   function setQuantity(packageId: string, quantity: number) {
@@ -112,6 +140,7 @@ export function ContractWizard({ priceLists, categories, depositThresholds }: Co
     setOrderLines((current) =>
       current.map((line) => (line.packageId === packageId ? { ...line, quantity: clamped } : line))
     );
+    setDepositOverride(null);
   }
 
   function goToStep(next: StepNumber) {
@@ -150,83 +179,101 @@ export function ContractWizard({ priceLists, categories, depositThresholds }: Co
   }
 
   const visibleSteps: StepNumber[] = needsServiceStep ? [1, 2, 3, 4, 5] : [1, 2, 4, 5];
+  const selectedPriceList = priceLists.find((priceList) => priceList.id === priceListId) ?? null;
 
   return (
     <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-6 px-7 py-6">
-      <ol className="flex flex-wrap gap-x-4 gap-y-1 text-xs font-medium tracking-wide uppercase">
-        {visibleSteps.map((n) => (
-          <li
-            key={n}
-            aria-current={step === n ? "step" : undefined}
-            className={step === n ? "text-foreground" : "text-muted-foreground"}
-          >
-            {n}. {STEP_LABELS[n]}
-          </li>
-        ))}
-      </ol>
+      {/* The stepper numbers what is SHOWN (1..N), not the internal
+          `StepNumber`: when step 3 is skipped, "Datos del contrato" must read
+          as stage 3 of 4, never as a gap between 2 and 4. */}
+      <Card>
+        <CardContent>
+          <Stepper
+            steps={visibleSteps.map((n) => ({ id: n, label: STEP_LABELS[n] }))}
+            currentId={step}
+          />
+        </CardContent>
+      </Card>
 
-      {step === 1 && (
-        <StepPriceList
-          priceLists={priceLists}
-          priceListId={priceListId}
-          onChange={setPriceListId}
-          onNext={() => goToStep(2)}
-        />
-      )}
+      <div className="grid items-start gap-6 lg:grid-cols-[1fr_320px]">
+        <div className="min-w-0">
+          {step === 1 && (
+            <StepPriceList
+              priceLists={priceLists}
+              priceListId={priceListId}
+              onChange={setPriceListId}
+              onNext={() => goToStep(2)}
+            />
+          )}
 
-      {step === 2 && (
-        <StepPackages
-          categories={categories}
-          priceListId={priceListId}
-          orderLines={orderLines}
-          onAdd={addPackage}
-          onRemove={removePackage}
-          onSetQuantity={setQuantity}
-          onBack={() => goToStep(1)}
-          onNext={() => goToStep(needsServiceStep ? 3 : 4)}
-        />
-      )}
+          {step === 2 && (
+            <StepPackages
+              categories={categories}
+              priceListId={priceListId}
+              orderLines={orderLines}
+              onAdd={addPackage}
+              onRemove={removePackage}
+              onSetQuantity={setQuantity}
+              onBack={() => goToStep(1)}
+              onNext={() => goToStep(needsServiceStep ? 3 : 4)}
+            />
+          )}
 
-      {step === 3 && needsServiceStep && (
-        <StepServices
-          requiredServices={requiredServices}
-          selections={serviceSelections}
-          onChange={(serviceId, selectedOption) =>
-            setServiceSelections((current) => ({ ...current, [serviceId]: selectedOption }))
-          }
-          onBack={() => goToStep(2)}
-          onNext={() => goToStep(4)}
-        />
-      )}
+          {step === 3 && needsServiceStep && (
+            <StepServices
+              requiredServices={requiredServices}
+              selections={serviceSelections}
+              onChange={(serviceId, selectedOption) =>
+                setServiceSelections((current) => ({ ...current, [serviceId]: selectedOption }))
+              }
+              onBack={() => goToStep(2)}
+              onNext={() => goToStep(4)}
+            />
+          )}
 
-      {step === 4 && (
-        <StepContractData
-          initialValues={contractData}
-          onBack={() => goToStep(needsServiceStep ? 3 : 2)}
-          onNext={(values) => {
-            setContractData(values);
-            goToStep(5);
-          }}
-        />
-      )}
+          {step === 4 && (
+            <StepContractData
+              initialValues={contractData}
+              onBack={() => goToStep(needsServiceStep ? 3 : 2)}
+              onNext={(values) => {
+                setContractData(values);
+                goToStep(5);
+              }}
+            />
+          )}
 
-      {step === 5 && (
-        <StepConfirm
+          {step === 5 && (
+            <StepConfirm
+              quotedLines={quotedLines}
+              subtotal={subtotal}
+              discount={discount}
+              extraCharge={extraCharge}
+              deposit={deposit}
+              total={total}
+              balance={balance}
+              onDiscountChange={setDiscount}
+              onExtraChargeChange={setExtraCharge}
+              onDepositChange={setDepositOverride}
+              submitError={submitError}
+              isSubmitting={isSubmitting}
+              onBack={() => goToStep(4)}
+              onConfirm={handleConfirm}
+            />
+          )}
+        </div>
+
+        <OrderSummaryPanel
+          priceListName={selectedPriceList?.name ?? null}
+          lines={quotedLines}
           subtotal={subtotal}
           discount={discount}
           extraCharge={extraCharge}
-          deposit={deposit}
           total={total}
+          deposit={deposit}
           balance={balance}
-          onDiscountChange={setDiscount}
-          onExtraChargeChange={setExtraCharge}
-          onDepositChange={setDepositOverride}
-          submitError={submitError}
-          isSubmitting={isSubmitting}
-          onBack={() => goToStep(4)}
-          onConfirm={handleConfirm}
+          contractData={contractData}
         />
-      )}
+      </div>
     </div>
   );
 }

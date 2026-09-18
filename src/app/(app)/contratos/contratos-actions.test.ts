@@ -27,7 +27,10 @@ import {
   regenerateContractImage,
   type CreateContractResult,
 } from "@/app/(app)/contratos/actions";
-import type { CreateContractPayload } from "@/app/(app)/contratos/nuevo/schema";
+import type {
+  ContractDataFormValues,
+  CreateContractPayload,
+} from "@/app/(app)/contratos/nuevo/schema";
 
 const ownerUserId = randomUUID();
 const otherUserId = randomUUID();
@@ -45,14 +48,14 @@ const ownerSession = {
 
 const createdContractIds: string[] = [];
 
-function validContractData() {
+function validContractData(): ContractDataFormValues {
   return {
     clientName: "Cliente de prueba",
     clientPhone: "",
-    clientMobile: "",
-    clientEmail: "",
+    clientMobile: "5555555555",
+    clientEmail: "cliente@example.com",
     clientAddress: "",
-    eventType: "boda",
+    eventType: "wedding",
     celebrated: "",
     eventDate: "2027-06-15",
     eventTime: "18:30",

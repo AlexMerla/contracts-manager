@@ -42,7 +42,7 @@ describe("scopeToOwner", () => {
     });
 
     const baseContract = {
-      eventType: "boda",
+      eventType: "wedding" as const,
       eventDate: new Date("2026-12-01"),
       subtotal: 1000,
       total: 1000,
