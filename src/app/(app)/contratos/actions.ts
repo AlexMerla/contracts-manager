@@ -6,9 +6,15 @@ import { revalidatePath } from "next/cache";
 
 import { auth } from "@/lib/auth";
 import { requireRole, scopeToOwner } from "@/lib/authorization";
-import { generateContractImage } from "@/lib/contract-template/generate-contract-image";
-import { getContractImageBuffer } from "@/lib/contract-template/get-contract-image-buffer";
+import {
+  generateContractImages,
+  type ContractImagePair,
+} from "@/lib/contract-template/generate-contract-image";
+import { getContractImageBuffers } from "@/lib/contract-template/get-contract-image-buffer";
 import { nextFolio } from "@/lib/contracts/folio";
+import type { ContractDeliveryStepResult } from "@/lib/google/api-client";
+import { upsertContractCalendarEvent } from "@/lib/google/calendar";
+import { uploadContractImageToDrive } from "@/lib/google/drive";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { EVENT_TYPE_LABEL } from "@/lib/event-type";
@@ -76,6 +82,7 @@ export async function createContract(
     include: {
       packagePrices: { where: { priceListId: data.priceListId } },
       packageServices: { include: { service: true } },
+      category: { select: { name: true } },
     },
   });
   const packageById = new Map(packages.map((pkg) => [pkg.id, pkg]));
@@ -219,8 +226,9 @@ export async function createContract(
       // still succeed; `imageGenerated` stays `false` for the manual retry
       // action (task 7 / `regenerateContractImage` below) rather than
       // rolling back or blocking the response.
+      let contractImages: ContractImagePair | null = null;
       try {
-        await generateContractImage({
+        contractImages = await generateContractImages({
           folio: contract.folio,
           eventDate: contract.eventDate,
           eventTime: contract.eventTime,
@@ -236,6 +244,7 @@ export async function createContract(
           services: contractPackagesData.map((line) => ({
             name: line.nameSnapshot,
             quantity: line.quantity,
+            category: packageById.get(line.packageId)?.category.name ?? null,
           })),
           total,
           deposit: data.deposit,
@@ -247,6 +256,46 @@ export async function createContract(
         });
       } catch (error: unknown) {
         console.error(`Failed to generate image for contract ${contract.id}:`, error);
+      }
+
+      // Sprint 6 task 8 / spec §4.2 step 2: the rest of the sequential
+      // delivery pipeline, still in this same request, still after the
+      // transaction. Each step gets its OWN try/catch so a Drive outage can't
+      // stop Calendar from being attempted (and vice versa), and neither can
+      // stop this action from returning success — the contract row already
+      // exists. Whatever failed stays `false` in its status column and is
+      // reported on the detail page (the wizard redirects there on success)
+      // as its own retry button, per §4.2 steps 4-5.
+      //
+      // Both step functions already convert Google/API failures into a result
+      // object rather than throwing; the try/catch is for the everything-else
+      // case (a Prisma write failing, say), so this stays true by construction
+      // and not just by their current implementation.
+      try {
+        // Passes the pair just produced instead of re-rendering both images —
+        // this is the first consumer of `generateContractImages`'s return
+        // value. `null` (generation failed) means Drive regenerates the pair
+        // itself and reports its own failure if that also fails.
+        const drive = await uploadContractImageToDrive(contract.id, contractImages ?? undefined);
+        if (!drive.ok) {
+          console.error(`Drive upload failed for contract ${contract.id}: ${drive.message}`);
+        }
+      } catch (error: unknown) {
+        console.error(`Drive upload threw for contract ${contract.id}:`, error);
+      }
+
+      // Order is now load-bearing, not just incidental: Calendar's 📎 link
+      // reads the OFFICIAL contract's `driveFileId`, which only exists once
+      // the Drive step above has run — Drive must stay before Calendar.
+      try {
+        const calendar = await upsertContractCalendarEvent(contract.id);
+        if (!calendar.ok) {
+          console.error(
+            `Calendar event failed for contract ${contract.id}: ${calendar.message}`
+          );
+        }
+      } catch (error: unknown) {
+        console.error(`Calendar event threw for contract ${contract.id}:`, error);
       }
 
       return { success: true, contractId: contract.id, folio: contract.folio };
@@ -292,7 +341,7 @@ export async function regenerateContractImage(
   }
 
   try {
-    await getContractImageBuffer(contractId);
+    await getContractImageBuffers(contractId);
   } catch (error: unknown) {
     console.error(`Failed to regenerate image for contract ${contractId}:`, error);
     return { error: "No se pudo generar la imagen del contrato. Intente nuevamente." };
@@ -306,4 +355,55 @@ export async function regenerateContractImage(
   revalidatePath(`/contratos/${contractId}`);
 
   return { success: true };
+}
+
+export type RetryDeliveryStepResult = { success: true } | { error: string };
+
+// Sprint 6 task 8 / spec §4.2 step 5 — one manual retry action per status
+// column. Shared body: both retries differ only in which step function they
+// run, so the session check, the owner scoping and the revalidate live here
+// once. Not exported (a "use server" module may only export async functions,
+// and this one takes a non-serializable callback).
+async function runContractDeliveryRetry(
+  contractId: string,
+  step: (id: string) => Promise<ContractDeliveryStepResult>
+): Promise<RetryDeliveryStepResult> {
+  const session = await requireSession();
+
+  // Same ownership rule as `regenerateContractImage` (spec §5): a `normal`
+  // user must not be able to retry — or probe the existence of — another
+  // user's contract.
+  const db = scopeToOwner(session);
+  const contract = await db.contract.findUnique({ where: { id: contractId } });
+  if (!contract) {
+    return { error: "Contrato no encontrado." };
+  }
+
+  let result: ContractDeliveryStepResult;
+  try {
+    result = await step(contractId);
+  } catch (error: unknown) {
+    console.error(`Delivery step retry threw for contract ${contractId}:`, error);
+    return { error: "No se pudo completar el paso. Intente nuevamente." };
+  }
+
+  if (!result.ok) {
+    return { error: result.message };
+  }
+
+  // Re-renders the detail page, which drops this button now that its status
+  // column is `true`.
+  revalidatePath(`/contratos/${contractId}`);
+
+  return { success: true };
+}
+
+/** Retries ONLY the Drive upload (idempotent — see `uploadContractImageToDrive`). */
+export async function retryDriveUpload(contractId: string): Promise<RetryDeliveryStepResult> {
+  return runContractDeliveryRetry(contractId, (id) => uploadContractImageToDrive(id));
+}
+
+/** Retries ONLY the Calendar event (upserts — see `upsertContractCalendarEvent`). */
+export async function retryCalendarEvent(contractId: string): Promise<RetryDeliveryStepResult> {
+  return runContractDeliveryRetry(contractId, upsertContractCalendarEvent);
 }

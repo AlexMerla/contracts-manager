@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Real database, no mocks for Prisma (this project's established pattern —
 // see src/lib/authorization.test.ts, src/app/catalog.test.ts). `auth()` is
@@ -21,10 +21,30 @@ vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
 }));
 
+// Sprint 6 task 8 — `createContract` now chains a real Drive upload and a
+// real Calendar event after image generation. Left unmocked, every run of
+// this suite would upload a throwaway JPEG into the operator's real Master
+// Drive and put a fake XV on the business's real calendar, using the live
+// refresh token in `google_connection`. These stubs are what keep the suite
+// side-effect-free; they also let it assert the §4.2 contract that a failing
+// delivery step never fails contract creation.
+const { mockUploadToDrive, mockUpsertCalendarEvent } = vi.hoisted(() => ({
+  mockUploadToDrive: vi.fn(),
+  mockUpsertCalendarEvent: vi.fn(),
+}));
+vi.mock("@/lib/google/drive", () => ({
+  uploadContractImageToDrive: mockUploadToDrive,
+}));
+vi.mock("@/lib/google/calendar", () => ({
+  upsertContractCalendarEvent: mockUpsertCalendarEvent,
+}));
+
 import { prisma } from "@/lib/prisma";
 import {
   createContract,
   regenerateContractImage,
+  retryCalendarEvent,
+  retryDriveUpload,
   type CreateContractResult,
 } from "@/app/(app)/contratos/actions";
 import type {
@@ -92,6 +112,11 @@ async function cleanupCreatedContracts() {
 }
 
 describe("createContract", () => {
+  beforeEach(() => {
+    mockUploadToDrive.mockReset().mockResolvedValue({ ok: true });
+    mockUpsertCalendarEvent.mockReset().mockResolvedValue({ ok: true });
+  });
+
   beforeAll(async () => {
     mockAuth.mockResolvedValue(ownerSession);
 
@@ -171,7 +196,8 @@ describe("createContract", () => {
     const { contractId, folio } = result as Extract<CreateContractResult, { success: true }>;
     createdContractIds.push(contractId);
 
-    expect(folio).toMatch(/^CT-\d{4,}$/);
+    expect(folio).toMatch(/^\d{5,}$/);
+    expect(Number(folio)).toBeGreaterThanOrEqual(3000);
 
     const contract = await prisma.contract.findUniqueOrThrow({
       where: { id: contractId },
@@ -301,5 +327,88 @@ describe("createContract", () => {
 
     const regenerated = await prisma.contract.findUniqueOrThrow({ where: { id: contractId } });
     expect(regenerated.imageGenerated).toBe(true);
+  });
+
+  // ---------------------------------------------------------------------
+  // Sprint 6 task 8 — Drive + Calendar wiring and per-step retry.
+  // ---------------------------------------------------------------------
+
+  it("runs Drive then Calendar after image generation, passing the generated buffer to Drive", async () => {
+    const result = await createContract(basePayload());
+    const { contractId } = result as Extract<CreateContractResult, { success: true }>;
+    createdContractIds.push(contractId);
+
+    expect(mockUploadToDrive).toHaveBeenCalledTimes(1);
+    expect(mockUpsertCalendarEvent).toHaveBeenCalledTimes(1);
+    const [driveContractId, driveImages] = mockUploadToDrive.mock.calls[0];
+    expect(driveContractId).toBe(contractId);
+    expect(Buffer.isBuffer(driveImages?.contract)).toBe(true);
+    expect(Buffer.isBuffer(driveImages?.preContract)).toBe(true);
+    expect(driveImages?.contract.equals(driveImages.preContract)).toBe(false);
+    expect(mockUpsertCalendarEvent).toHaveBeenCalledWith(contractId);
+  });
+
+  // Spec §4.2 step 4 + task 8: a failure in one step must block neither the
+  // other step nor the contract itself.
+  it("still creates the contract and still attempts Calendar when Drive fails", async () => {
+    mockUploadToDrive.mockResolvedValue({ ok: false, message: "Drive caído" });
+
+    const result = await createContract(basePayload());
+    expect("success" in result && result.success).toBe(true);
+    const { contractId } = result as Extract<CreateContractResult, { success: true }>;
+    createdContractIds.push(contractId);
+
+    expect(mockUpsertCalendarEvent).toHaveBeenCalledWith(contractId);
+  });
+
+  it("still creates the contract when both delivery steps throw", async () => {
+    mockUploadToDrive.mockRejectedValue(new Error("boom"));
+    mockUpsertCalendarEvent.mockRejectedValue(new Error("boom"));
+
+    const result = await createContract(basePayload());
+    expect("success" in result && result.success).toBe(true);
+    createdContractIds.push(
+      (result as Extract<CreateContractResult, { success: true }>).contractId
+    );
+  });
+
+  it("retryDriveUpload re-runs only Drive, and rejects a non-owning session", async () => {
+    const result = await createContract(basePayload());
+    const { contractId } = result as Extract<CreateContractResult, { success: true }>;
+    createdContractIds.push(contractId);
+    mockUploadToDrive.mockClear();
+    mockUpsertCalendarEvent.mockClear();
+
+    mockAuth.mockResolvedValueOnce({
+      user: {
+        id: otherUserId,
+        role: "normal" as const,
+        name: "Other",
+        email: "other-test@example.com",
+      },
+      expires: new Date(Date.now() + 60_000).toISOString(),
+    });
+    expect("error" in (await retryDriveUpload(contractId))).toBe(true);
+    expect(mockUploadToDrive).not.toHaveBeenCalled();
+
+    const ownerResult = await retryDriveUpload(contractId);
+    expect("success" in ownerResult && ownerResult.success).toBe(true);
+    expect(mockUploadToDrive).toHaveBeenCalledWith(contractId);
+    // The point of independent retries: Calendar was not touched.
+    expect(mockUpsertCalendarEvent).not.toHaveBeenCalled();
+  });
+
+  it("retryCalendarEvent re-runs only Calendar and surfaces the step's own message", async () => {
+    const result = await createContract(basePayload());
+    const { contractId } = result as Extract<CreateContractResult, { success: true }>;
+    createdContractIds.push(contractId);
+    mockUploadToDrive.mockClear();
+    mockUpsertCalendarEvent.mockClear().mockResolvedValue({ ok: false, message: "Calendar caído" });
+
+    expect(await retryCalendarEvent(contractId)).toEqual({ error: "Calendar caído" });
+    expect(mockUploadToDrive).not.toHaveBeenCalled();
+
+    mockUpsertCalendarEvent.mockResolvedValue({ ok: true });
+    expect(await retryCalendarEvent(contractId)).toEqual({ success: true });
   });
 });

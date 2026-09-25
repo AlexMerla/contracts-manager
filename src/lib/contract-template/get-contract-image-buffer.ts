@@ -1,7 +1,13 @@
 import { prisma } from "@/lib/prisma";
 import { EVENT_TYPE_LABEL } from "@/lib/event-type";
 
-import { generateContractImage, type ContractImageData } from "./generate-contract-image";
+import {
+  generateContractImage,
+  generateContractImages,
+  type ContractImageData,
+  type ContractImagePair,
+  type ContractTemplateVariant,
+} from "./generate-contract-image";
 
 export class ContractNotFoundError extends Error {
   constructor(contractId: string) {
@@ -22,17 +28,25 @@ export class ContractNotFoundError extends Error {
 // before calling this; callers that run without any user session at all
 // (Drive upload, email sending, the public viewer keyed by `viewer_token`)
 // have no session to scope by in the first place.
-export async function getContractImageBuffer(contractId: string): Promise<Buffer> {
+async function loadContractImageData(contractId: string): Promise<ContractImageData> {
   const contract = await prisma.contract.findUnique({
     where: { id: contractId },
-    include: { contractPackages: true },
+    include: {
+      contractPackages: {
+        select: {
+          nameSnapshot: true,
+          quantity: true,
+          package: { select: { category: { select: { name: true } } } },
+        },
+      },
+    },
   });
 
   if (!contract) {
     throw new ContractNotFoundError(contractId);
   }
 
-  const data: ContractImageData = {
+  return {
     folio: contract.folio,
     eventDate: contract.eventDate,
     eventTime: contract.eventTime,
@@ -48,11 +62,23 @@ export async function getContractImageBuffer(contractId: string): Promise<Buffer
     services: contract.contractPackages.map((line) => ({
       name: line.nameSnapshot,
       quantity: line.quantity,
+      category: line.package.category.name,
     })),
     total: Number(contract.total),
     deposit: Number(contract.deposit),
     balance: Number(contract.balance),
   };
+}
 
-  return generateContractImage(data);
+export async function getContractImageBuffer(
+  contractId: string,
+  variant: ContractTemplateVariant = "contract"
+): Promise<Buffer> {
+  return generateContractImage(await loadContractImageData(contractId), variant);
+}
+
+// Renders BOTH the official contract and the pre-contract from ONE query,
+// for Drive's all-or-nothing two-file upload step.
+export async function getContractImageBuffers(contractId: string): Promise<ContractImagePair> {
+  return generateContractImages(await loadContractImageData(contractId));
 }

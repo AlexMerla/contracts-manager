@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { generateContractImage, type ContractImageData } from "./generate-contract-image";
+import {
+  formatServices,
+  generateContractImage,
+  generateContractImages,
+  type ContractImageData,
+  type ContractImageServiceLine,
+} from "./generate-contract-image";
 
 // JPEG files start with the SOI marker 0xFFD8 followed by 0xFF (the first
 // marker segment, typically APP0/JFIF or APP1/Exif) — checking these three
@@ -10,7 +16,7 @@ const JPEG_MAGIC = Buffer.from([0xff, 0xd8, 0xff]);
 
 function sampleContractData(): ContractImageData {
   return {
-    folio: "CT-0001",
+    folio: "03000",
     eventDate: new Date("2027-06-15T00:00:00.000Z"),
     eventTime: new Date("1970-01-01T18:30:00.000Z"),
     clientName: "María Fernández López",
@@ -23,8 +29,8 @@ function sampleContractData(): ContractImageData {
     placeName: "Salón Jardines del Sol",
     placeAddress: "Carretera Federal km 12",
     services: [
-      { name: "Paquete Oro", quantity: 1 },
-      { name: "Decoración floral", quantity: 2 },
+      { name: "Paquete Oro", quantity: 1, category: "Fotografía" },
+      { name: "Decoración floral", quantity: 2, category: "Decoración" },
     ],
     total: 25000,
     deposit: 3000,
@@ -77,11 +83,55 @@ describe("generateContractImage", () => {
       services: Array.from({ length: 20 }, (_, index) => ({
         name: `Servicio adicional número ${index + 1} con descripción larga`,
         quantity: 1,
+        category: "Otros",
       })),
     };
 
     const buffer = await generateContractImage(data);
 
     expect(buffer.subarray(0, 3).equals(JPEG_MAGIC)).toBe(true);
+  });
+
+  it("renders the pre-contract variant as a valid, differently-templated JPEG", async () => {
+    const data = sampleContractData();
+    const contract = await generateContractImage(data, "contract");
+    const preContract = await generateContractImage(data, "pre-contract");
+
+    expect(preContract.subarray(0, 3).equals(JPEG_MAGIC)).toBe(true);
+    expect(preContract.length).toBeGreaterThan(50_000);
+    expect(preContract.equals(contract)).toBe(false);
+  });
+});
+
+describe("generateContractImages", () => {
+  it("returns both a contract and pre-contract JPEG for the same data", async () => {
+    const pair = await generateContractImages(sampleContractData());
+
+    expect(pair.contract.subarray(0, 3).equals(JPEG_MAGIC)).toBe(true);
+    expect(pair.preContract.subarray(0, 3).equals(JPEG_MAGIC)).toBe(true);
+    expect(pair.contract.equals(pair.preContract)).toBe(false);
+  });
+});
+
+describe("formatServices", () => {
+  it("hides the quantity marker for a single unit and shows it for two or more", () => {
+    const services: ContractImageServiceLine[] = [
+      { name: "Paquete Oro", quantity: 1, category: "Fotografía" },
+      { name: "Decoración floral", quantity: 2, category: "Decoración" },
+    ];
+
+    expect(formatServices(services)).toBe(
+      "Paquete Oro [Fotografía], Decoración floral(x2) [Decoración]"
+    );
+  });
+
+  it("omits the category bracket when a service has no category", () => {
+    const services: ContractImageServiceLine[] = [{ name: "Paquete Oro", quantity: 3, category: null }];
+
+    expect(formatServices(services)).toBe("Paquete Oro(x3)");
+  });
+
+  it("returns an empty string for an empty service list", () => {
+    expect(formatServices([])).toBe("");
   });
 });

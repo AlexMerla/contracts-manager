@@ -155,6 +155,7 @@ model Contract {
   calendarCreated    Boolean        @default(false) @map("calendar_created")
   emailSent          Boolean        @default(false) @map("email_sent")
   driveFileId        String?        @map("drive_file_id")
+  preContractDriveFileId String?    @map("pre_contract_drive_file_id")
   calendarEventId    String?        @map("calendar_event_id")
   priceListId        String         @map("price_list_id") @db.Uuid
   createdById        String         @map("created_by_id") @db.Uuid

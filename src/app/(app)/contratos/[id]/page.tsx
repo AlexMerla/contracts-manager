@@ -26,8 +26,13 @@ import { StatusPill } from "@/components/status-pill";
 import { PageHeader } from "@/components/page-header";
 
 import { RetryImageButton } from "./retry-image-button";
+import { RetryStepButton } from "./retry-step-button";
 
-const dateFormatter = new Intl.DateTimeFormat("es-MX", { dateStyle: "long" });
+// `eventDate` is `@db.Date`, materialised as UTC midnight — timeZone: "UTC"
+// avoids the local-timezone shift that would otherwise print the day
+// before the real one on a negative-UTC-offset host (same hazard timeFormatter
+// below already guards against for `eventTime`).
+const dateFormatter = new Intl.DateTimeFormat("es-MX", { dateStyle: "long", timeZone: "UTC" });
 const timeFormatter = new Intl.DateTimeFormat("es-MX", {
   hour: "2-digit",
   minute: "2-digit",
@@ -92,8 +97,19 @@ export default async function ContratoDetailPage({ params }: ContratoDetailPageP
               {/* Spec §4.2: a visual indicator plus a manual retry action
                   for an incomplete delivery step — only shown once it has
                   actually failed, not while it's merely pending sequential
-                  processing at confirm time. */}
-              {!contract.imageGenerated && <RetryImageButton contractId={contract.id} />}
+                  processing at confirm time. One control per status column,
+                  each independent (sprint-06 task 8): a contract with
+                  `driveUploaded = true` but `calendarCreated = false` shows
+                  only the Calendar retry. */}
+              <div className="flex flex-col items-end gap-2">
+                {!contract.imageGenerated && <RetryImageButton contractId={contract.id} />}
+                {!contract.driveUploaded && (
+                  <RetryStepButton contractId={contract.id} step="drive" />
+                )}
+                {!contract.calendarCreated && (
+                  <RetryStepButton contractId={contract.id} step="calendar" />
+                )}
+              </div>
             </div>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">

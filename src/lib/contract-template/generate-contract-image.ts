@@ -5,8 +5,22 @@ import { CONTRACT_TEMPLATE_FONT_FAMILY, drawWrappedText } from "./draw-wrapped-t
 import { CONTRACT_TEMPLATE_FIELDS, CONTRACT_TEMPLATE_HEIGHT, CONTRACT_TEMPLATE_WIDTH } from "./fields";
 import { formatMoney } from "./format-money";
 
-const TEMPLATE_PATH = path.join(process.cwd(), "src/lib/contract-template/assets/contract.jpg");
-const FONT_PATH = path.join(process.cwd(), "src/lib/contract-template/assets/font.ttf");
+const ASSETS_DIR = path.join(process.cwd(), "src/lib/contract-template/assets");
+const FONT_PATH = path.join(ASSETS_DIR, "font.ttf");
+
+// Every contract is born `pre_contract` (Contract.contractStatus @default,
+// spec §6.4) and both templates share ONE coordinate map (fields.ts) — the
+// legacy events-manager implementation drew both with the same `fillText`
+// block, varying only the base JPEG. Verified by rendering a real
+// pre-contract sample and inspecting it: every field lands correctly, and
+// the yellow legend box (left half, y≈1060-1160) clears the amounts column
+// (x≈857).
+export type ContractTemplateVariant = "contract" | "pre-contract";
+
+const TEMPLATE_PATHS: Record<ContractTemplateVariant, string> = {
+  contract: path.join(ASSETS_DIR, "contract.jpg"),
+  "pre-contract": path.join(ASSETS_DIR, "pre-contract.jpg"),
+};
 
 // Registered once at module load, not per-call: @napi-rs/canvas has no
 // built-in font with full Latin Extended-A coverage, so without this the
@@ -22,11 +36,12 @@ GlobalFonts.registerFromPath(FONT_PATH, CONTRACT_TEMPLATE_FONT_FAMILY);
 
 // Matches the detail page's formatting (src/app/(app)/contratos/[id]/page.tsx)
 // so the generated image and the on-screen contract detail read the same
-// way. `eventTime` is stored as a Prisma `@db.Time` column, which Prisma
-// returns as a `Date` anchored to 1970-01-01 UTC — formatting with
-// timeZone: "UTC" avoids the local-timezone shift that would otherwise
-// apply to that fake date.
-const dateFormatter = new Intl.DateTimeFormat("es-MX", { dateStyle: "long" });
+// way. `eventDate` is a Prisma `@db.Date` column, materialised as UTC
+// midnight — and `eventTime` is `@db.Time`, anchored to 1970-01-01 UTC —
+// so both need `timeZone: "UTC"` or a negative-UTC-offset host prints the
+// wrong calendar day (previously missing here: this formatted eventDate
+// in the server's local zone, printing the day *before* the real one).
+const dateFormatter = new Intl.DateTimeFormat("es-MX", { dateStyle: "long", timeZone: "UTC" });
 const timeFormatter = new Intl.DateTimeFormat("es-MX", {
   hour: "2-digit",
   minute: "2-digit",
@@ -36,6 +51,11 @@ const timeFormatter = new Intl.DateTimeFormat("es-MX", {
 export interface ContractImageServiceLine {
   name: string;
   quantity: number;
+  /** Read live from the catalog (`package.category.name`) — informational
+   * grouping, not a money-owed field, so it is never snapshotted (unlike
+   * `nameSnapshot`/`priceSnapshot`, spec §6.5). Matches the same live-join
+   * decision already made for the Calendar description. */
+  category: string | null;
 }
 
 // Plain data shape, deliberately not `Prisma.Contract` — keeps this
@@ -70,9 +90,19 @@ function formatPlaceNameAddress(placeName: string | null, placeAddress: string |
   return placeName ?? placeAddress ?? "";
 }
 
-function formatServices(services: ContractImageServiceLine[]): string {
+// Legacy events-manager item format (`calendar.ts`'s `formatPackageLine` uses
+// the same shape): `Nombre(xN) [Categoría]`. `(xN)` is only printed for N ≥ 2
+// — a single-quantity line reads as just the name, matching this image's
+// pre-existing behavior — and `[Categoría]` is only printed when a category
+// is set; the two are independent of each other. Exported so the format is
+// directly unit-testable rather than only indirectly via a rendered JPEG.
+export function formatServices(services: ContractImageServiceLine[]): string {
   return services
-    .map((service) => (service.quantity > 1 ? `${service.quantity}x ${service.name}` : service.name))
+    .map((service) => {
+      const quantity = service.quantity > 1 ? `(x${service.quantity})` : "";
+      const category = service.category ? ` [${service.category}]` : "";
+      return `${service.name}${quantity}${category}`;
+    })
     .join(", ");
 }
 
@@ -82,8 +112,11 @@ function formatServices(services: ContractImageServiceLine[]): string {
 // auto-generation and the on-demand regeneration endpoint call this same
 // function with the same shaped input (task 6's "equivalent images for the
 // same contract" requirement).
-export async function generateContractImage(data: ContractImageData): Promise<Buffer> {
-  const template = await loadImage(TEMPLATE_PATH);
+export async function generateContractImage(
+  data: ContractImageData,
+  variant: ContractTemplateVariant = "contract"
+): Promise<Buffer> {
+  const template = await loadImage(TEMPLATE_PATHS[variant]);
   const canvas = createCanvas(CONTRACT_TEMPLATE_WIDTH, CONTRACT_TEMPLATE_HEIGHT);
   const ctx = canvas.getContext("2d");
   ctx.drawImage(template, 0, 0, CONTRACT_TEMPLATE_WIDTH, CONTRACT_TEMPLATE_HEIGHT);
@@ -110,4 +143,20 @@ export async function generateContractImage(data: ContractImageData): Promise<Bu
   drawWrappedText(ctx, formatMoney(data.balance), f.balance);
 
   return canvas.toBuffer("image/jpeg");
+}
+
+/** The official contract and the pre-contract, generated together and
+ * all-or-nothing: no caller can hold half a pair. Sequential (not
+ * `Promise.all`) because both renders share the process-wide `GlobalFonts`
+ * registry and each allocates a full canvas; at ~2 contracts/week (spec
+ * §4.2) overlap buys nothing. */
+export interface ContractImagePair {
+  contract: Buffer;
+  preContract: Buffer;
+}
+
+export async function generateContractImages(data: ContractImageData): Promise<ContractImagePair> {
+  const contract = await generateContractImage(data, "contract");
+  const preContract = await generateContractImage(data, "pre-contract");
+  return { contract, preContract };
 }
