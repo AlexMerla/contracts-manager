@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { auth } from "@/lib/auth";
 import { AppShell } from "@/components/app-shell";
+import { GoogleConnectionBanner } from "@/components/google-connection-banner";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const session = await auth();
@@ -19,6 +20,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
       }}
       defaultCollapsed={collapsed}
     >
+      <GoogleConnectionBanner role={session.user.role} />
       {children}
     </AppShell>
   );

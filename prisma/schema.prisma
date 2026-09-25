@@ -319,6 +319,7 @@ model GoogleConnection {
   id                     String    @id @default(uuid()) @db.Uuid
   connected              Boolean   @default(false)
   refreshTokenEncrypted  String?   @map("refresh_token_encrypted")
+  connectedEmail         String?   @map("connected_email")
   connectedById          String?   @map("connected_by_id") @db.Uuid
   connectedAt            DateTime? @map("connected_at") @db.Timestamptz(6)
   lastError              String?   @map("last_error")

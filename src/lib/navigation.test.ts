@@ -4,9 +4,16 @@ import { NAV_ITEMS, SUPER_ONLY_PREFIXES, navItemsForRole } from "@/lib/navigatio
 import { NAV_ICONS } from "@/components/nav-icons";
 
 describe("navigation", () => {
-  it("SUPER_ONLY_PREFIXES matches the exact Sprint-3 literal set", () => {
+  it("SUPER_ONLY_PREFIXES matches the exact literal set (Sprint 3 + Sprint 6's /configuracion)", () => {
     expect(new Set(SUPER_ONLY_PREFIXES)).toEqual(
-      new Set(["/usuarios", "/categorias", "/servicios", "/listas-precios", "/paquetes"])
+      new Set([
+        "/usuarios",
+        "/categorias",
+        "/servicios",
+        "/listas-precios",
+        "/paquetes",
+        "/configuracion",
+      ])
     );
   });
 
@@ -22,8 +29,8 @@ describe("navigation", () => {
     ]);
   });
 
-  it("navItemsForRole('super') returns all 8 items", () => {
-    expect(navItemsForRole("super")).toHaveLength(8);
+  it("navItemsForRole('super') returns all 9 items", () => {
+    expect(navItemsForRole("super")).toHaveLength(9);
   });
 
   it("every NAV_ITEMS icon resolves in NAV_ICONS", () => {
