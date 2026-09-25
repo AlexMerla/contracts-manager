@@ -25,7 +25,10 @@ import {
   TableCell,
 } from "@/components/ui/table";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { Money } from "@/components/money";
+import { DeliveryStatus, hasPendingDelivery } from "@/components/delivery-status";
 // Single source of truth for the payment vocabulary — re-exported from
 // status-pill so the filter and the pill can never drift apart.
 import { PAYMENT_STATUS_LABEL, StatusPill } from "@/components/status-pill";
@@ -43,6 +46,11 @@ export interface ContractRow {
   priceListId: string;
   priceListName: string;
   createdByName: string;
+  // Spec §4.2 point 4 — the three post-confirmation pipeline flags, surfaced
+  // in the list so an incomplete step is visible without opening the contract.
+  imageGenerated: boolean;
+  driveUploaded: boolean;
+  calendarCreated: boolean;
 }
 
 export interface ContractsFilters {
@@ -51,6 +59,7 @@ export interface ContractsFilters {
   tipoEvento: string;
   listaPrecios: string;
   estatusPago: string;
+  pendientes: boolean;
 }
 
 const ALL = "todos";
@@ -82,6 +91,7 @@ export function ContractsListView({
   const [tipoEvento, setTipoEvento] = useState(initialFilters.tipoEvento);
   const [listaPrecios, setListaPrecios] = useState(initialFilters.listaPrecios);
   const [estatusPago, setEstatusPago] = useState(initialFilters.estatusPago);
+  const [pendientes, setPendientes] = useState(initialFilters.pendientes);
   // Two states for search: `queryInput` is what the user sees (immediate),
   // `query` is what actually filters and hits the URL (debounced 300ms).
   // No debounce utility exists in the repo, so this is hand-rolled.
@@ -103,9 +113,10 @@ export function ContractsListView({
     if (tipoEvento !== ALL) params.set("tipoEvento", tipoEvento);
     if (listaPrecios !== ALL) params.set("listaPrecios", listaPrecios);
     if (estatusPago !== ALL) params.set("estatusPago", estatusPago);
+    if (pendientes) params.set("pendientes", "1");
     const qs = params.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  }, [estado, query, tipoEvento, listaPrecios, estatusPago, pathname, router]);
+  }, [estado, query, tipoEvento, listaPrecios, estatusPago, pendientes, pathname, router]);
 
   // Counts come from the UNFILTERED array — a tab badge must show how many
   // contracts are in that state, not how many survive the other filters.
@@ -145,6 +156,7 @@ export function ContractsListView({
       if (tipoEvento !== ALL && contract.eventType !== tipoEvento) return false;
       if (listaPrecios !== ALL && contract.priceListId !== listaPrecios) return false;
       if (estatusPago !== ALL && contract.paymentStatus !== estatusPago) return false;
+      if (pendientes && !hasPendingDelivery(contract)) return false;
       if (
         needle &&
         !contract.folio.toLowerCase().includes(needle) &&
@@ -154,12 +166,24 @@ export function ContractsListView({
       }
       return true;
     });
-  }, [contracts, estado, tipoEvento, listaPrecios, estatusPago, query]);
+  }, [contracts, estado, tipoEvento, listaPrecios, estatusPago, pendientes, query]);
+
+  // Count for the "Con pendientes" checkbox comes from the UNFILTERED array,
+  // same rule as the tab counts above: it answers "how many need attention in
+  // total", not "how many survive the filters I already applied".
+  const pendingCount = useMemo(
+    () => contracts.filter((contract) => hasPendingDelivery(contract)).length,
+    [contracts]
+  );
 
   // "Limpiar" resets the filter row but NOT the tab — the mockup treats the
   // active status tab and the filters as two separate concepts.
   const filtersDirty =
-    queryInput !== "" || tipoEvento !== ALL || listaPrecios !== ALL || estatusPago !== ALL;
+    queryInput !== "" ||
+    tipoEvento !== ALL ||
+    listaPrecios !== ALL ||
+    estatusPago !== ALL ||
+    pendientes;
 
   function clearFilters() {
     setQueryInput("");
@@ -167,9 +191,10 @@ export function ContractsListView({
     setTipoEvento(ALL);
     setListaPrecios(ALL);
     setEstatusPago(ALL);
+    setPendientes(false);
   }
 
-  const columnCount = showCreatedBy ? 8 : 7;
+  const columnCount = showCreatedBy ? 9 : 8;
 
   const eventTypeItems = {
     [ALL]: "Todos los eventos",
@@ -265,6 +290,21 @@ export function ContractsListView({
           </SelectContent>
         </Select>
 
+        {/* A checkbox, not a fifth Select: it's a yes/no cut across the same
+            client-side array the other filters use, and the count tells the
+            operator up front whether it's worth ticking. Hidden entirely when
+            nothing is pending, so the healthy system shows no extra control. */}
+        {pendingCount > 0 ? (
+          <Label htmlFor="pendientes" className="font-normal">
+            <Checkbox
+              id="pendientes"
+              checked={pendientes}
+              onCheckedChange={(checked) => setPendientes(checked === true)}
+            />
+            Con pendientes ({pendingCount})
+          </Label>
+        ) : null}
+
         {filtersDirty ? (
           <Button variant="ghost" size="sm" onClick={clearFilters}>
             Limpiar
@@ -283,6 +323,7 @@ export function ContractsListView({
                 <TableHead>Fecha</TableHead>
                 <TableHead>Estado</TableHead>
                 <TableHead>Pago</TableHead>
+                <TableHead>Entrega</TableHead>
                 <TableHead className="text-right">Saldo</TableHead>
                 {showCreatedBy && <TableHead>Creado por</TableHead>}
               </TableRow>
@@ -314,6 +355,13 @@ export function ContractsListView({
                   </TableCell>
                   <TableCell>
                     <StatusPill kind="pago" value={contract.paymentStatus} />
+                  </TableCell>
+                  <TableCell>
+                    <DeliveryStatus
+                      imageGenerated={contract.imageGenerated}
+                      driveUploaded={contract.driveUploaded}
+                      calendarCreated={contract.calendarCreated}
+                    />
                   </TableCell>
                   <TableCell className="text-right">
                     <Money

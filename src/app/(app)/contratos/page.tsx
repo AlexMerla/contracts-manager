@@ -8,7 +8,10 @@ import { PageHeader } from "@/components/page-header";
 
 import { ContractsListView, type ContractRow } from "./contracts-list-view";
 
-const dateFormatter = new Intl.DateTimeFormat("es-MX", { dateStyle: "short" });
+// `eventDate` is `@db.Date`, materialised as UTC midnight — timeZone: "UTC"
+// avoids the local-timezone shift that would otherwise print the day
+// before the real one on a negative-UTC-offset host.
+const dateFormatter = new Intl.DateTimeFormat("es-MX", { dateStyle: "short", timeZone: "UTC" });
 
 interface ContratosPageProps {
   // Same `searchParams` pattern as catalogo/page.tsx. Read only to seed the
@@ -19,6 +22,7 @@ interface ContratosPageProps {
     tipoEvento?: string;
     listaPrecios?: string;
     estatusPago?: string;
+    pendientes?: string;
   }>;
 }
 
@@ -57,9 +61,14 @@ export default async function ContratosPage({ searchParams }: ContratosPageProps
     priceListId: contract.priceListId,
     priceListName: contract.priceList.name,
     createdByName: contract.createdBy.name,
+    // Spec §4.2 point 4. Already selected by the unqualified `findMany` above
+    // — these are plain scalar columns on `contracts`, no join, no migration.
+    imageGenerated: contract.imageGenerated,
+    driveUploaded: contract.driveUploaded,
+    calendarCreated: contract.calendarCreated,
   }));
 
-  const { estado, q, tipoEvento, listaPrecios, estatusPago } = await searchParams;
+  const { estado, q, tipoEvento, listaPrecios, estatusPago, pendientes } = await searchParams;
 
   const isSuper = session.user.role === "super";
 
@@ -88,6 +97,7 @@ export default async function ContratosPage({ searchParams }: ContratosPageProps
             tipoEvento: tipoEvento ?? "todos",
             listaPrecios: listaPrecios ?? "todos",
             estatusPago: estatusPago ?? "todos",
+            pendientes: pendientes === "1",
           }}
         />
       </div>
