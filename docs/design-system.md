@@ -61,7 +61,7 @@ Three type families, each with a distinct job:
 |---|---|---|
 | **Schibsted Grotesk** | UI body | Body text, labels, table content |
 | **Geist** | Display | `h1`–`h4`, KPI values, large monetary amounts |
-| **Roboto Mono** | Mono | Folios (`CT-0412`, `PG-0031`), IDs, audit/timestamp trails |
+| **Roboto Mono** | Mono | Folios (`03142`, `PG-0031`), IDs, audit/timestamp trails |
 
 Load via `next/font/google` (not a CDN `@import` like the prototype) — this is a Vercel/Next.js convention already noted in the session's Vercel context.
 
@@ -137,7 +137,7 @@ These apply to every piece of UI copy, equally binding as the visual tokens abov
 - **Formal address ("usted"), never "tú"** — this refines spec §0's "product-facing text is in Spanish (Mexico)" with a specific register.
 - Sentence case on buttons and labels; **UPPERCASE + `caps` tracking only for micro-labels** (table headers, section eyebrows) — never for buttons, titles, or body text.
 - Dates: `dd/mm/aaaa`.
-- Folios/IDs in the mono family (§1.2), with fixed prefixes: `CT-####` for contracts, `PG-####` for payments.
+- Folios/IDs in the mono family (§1.2). **Correction (2026-09-19)**: contract folios have no prefix — they are a plain 5-digit zero-padded consecutive number starting at `03000` (e.g. `03142`), a code constant (`FOLIO_START` in `src/lib/contracts/folio.ts`) continuing the client's legacy paper numbering. Always display the folio verbatim as stored — never re-pad or strip digits. Payment folios keep the `PG-####` prefix (unaffected by this correction).
 - No emoji, anywhere in product UI.
 - Tone: concrete and numeric, never alarmist — this directly constrains how `Alert` and `EmptyState` copy should read (state the number/fact, then the action, not a dramatized warning).
 
