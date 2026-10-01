@@ -17,8 +17,10 @@ const FOLDER_MIME_TYPE = "application/vnd.google-apps.folder";
 const CONTRACT_IMAGE_MIME_TYPE = "image/jpeg";
 
 /** Folder created (and thereafter reused) in the Master Drive's root when no
- * `GOOGLE_DRIVE_FOLDER_ID` is configured. */
-export const CONTRACTS_FOLDER_NAME = "Contratos";
+ * `GOOGLE_DRIVE_FOLDER_ID` is configured. Named distinctly from a generic
+ * "Contratos" so it reads clearly as this app's own automated folder, not
+ * whatever manual contract documentation the business may already keep. */
+export const CONTRACTS_FOLDER_NAME = "ContratosWeb";
 
 interface DriveFile {
   id: string;
