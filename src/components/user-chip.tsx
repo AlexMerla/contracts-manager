@@ -3,15 +3,6 @@
 import { LogOut } from "lucide-react";
 
 import { signOutAction } from "@/lib/actions/sign-out";
-import { Badge } from "@/components/ui/badge";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Icon } from "@/components/ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -45,51 +36,58 @@ function InitialsCircle({ name }: { name: string }) {
   );
 }
 
-export function UserChip({ user, collapsed }: UserChipProps) {
-  const trigger = (
-    <DropdownMenuTrigger
-      className={cn(
-        "flex w-full items-center gap-2 rounded-md p-1.5 text-left outline-hidden hover:bg-accent focus-visible:bg-accent",
-        collapsed && "justify-center"
-      )}
-    >
-      <InitialsCircle name={user.name} />
-      {!collapsed ? (
-        <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
-          <span className="truncate text-sm font-medium">{user.name}</span>
-          <Badge variant={user.role === "super" ? "ink" : "secondary"}>
-            {roleLabel(user.role)}
-          </Badge>
-        </span>
-      ) : null}
-    </DropdownMenuTrigger>
-  );
-
+// A direct one-click action, not a menu item: the icon itself is the
+// affordance, so there's nothing to discover behind an extra click.
+function SignOutButton({ tooltipSide }: { tooltipSide: "top" | "right" }) {
   return (
-    <DropdownMenu>
-      {collapsed ? (
+    <form action={signOutAction}>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              type="submit"
+              aria-label="Cerrar sesión"
+              className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-hidden hover:bg-accent hover:text-destructive focus-visible:bg-accent"
+            >
+              <Icon icon={LogOut} />
+            </button>
+          }
+        />
+        <TooltipContent side={tooltipSide}>Cerrar sesión</TooltipContent>
+      </Tooltip>
+    </form>
+  );
+}
+
+export function UserChip({ user, collapsed }: UserChipProps) {
+  if (collapsed) {
+    return (
+      <div className="flex flex-col items-center gap-1 p-1.5">
         <Tooltip>
-          <TooltipTrigger render={trigger} />
+          <TooltipTrigger
+            render={
+              <span className="flex cursor-default">
+                <InitialsCircle name={user.name} />
+              </span>
+            }
+          />
           <TooltipContent side="right">
             {user.name} · {roleLabel(user.role)}
           </TooltipContent>
         </Tooltip>
-      ) : (
-        trigger
-      )}
-      <DropdownMenuContent side="top" align="start">
-        <DropdownMenuLabel>{user.email}</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <form action={signOutAction} className="w-full">
-          <DropdownMenuItem
-            variant="destructive"
-            render={<button type="submit" className="w-full" />}
-          >
-            <Icon icon={LogOut} />
-            Cerrar sesión
-          </DropdownMenuItem>
-        </form>
-      </DropdownMenuContent>
-    </DropdownMenu>
+        <SignOutButton tooltipSide="right" />
+      </div>
+    );
+  }
+
+  return (
+    <div className={cn("flex items-center gap-2 rounded-md p-1.5")}>
+      <InitialsCircle name={user.name} />
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="truncate text-sm font-medium">{user.name}</span>
+        <span className="truncate text-xs text-muted-foreground">{roleLabel(user.role)}</span>
+      </span>
+      <SignOutButton tooltipSide="top" />
+    </div>
   );
 }
