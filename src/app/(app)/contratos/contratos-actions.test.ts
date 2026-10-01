@@ -39,12 +39,31 @@ vi.mock("@/lib/google/calendar", () => ({
   upsertContractCalendarEvent: mockUpsertCalendarEvent,
 }));
 
+// Sprint 7 task 6 — same hard safety requirement as Drive/Calendar above,
+// and for the same reason: `vitest.config.mts` loads the real `.env` through
+// `dotenv/config`, so the LIVE production `RESEND_API_KEY` and
+// `MANYCHAT_API_KEY` are in `process.env` while this suite runs. Unmocked,
+// every run would email a fake contract to `cliente@example.com` through the
+// business's verified sending domain and create a junk WhatsApp subscriber in
+// the business's real ManyChat account. These two stubs are not optional.
+const { mockSendContractEmail, mockTriggerWhatsApp } = vi.hoisted(() => ({
+  mockSendContractEmail: vi.fn(),
+  mockTriggerWhatsApp: vi.fn(),
+}));
+vi.mock("@/lib/email/contract-email", () => ({
+  sendContractEmail: mockSendContractEmail,
+}));
+vi.mock("@/lib/whatsapp/manychat", () => ({
+  triggerContractWhatsApp: mockTriggerWhatsApp,
+}));
+
 import { prisma } from "@/lib/prisma";
 import {
   createContract,
   regenerateContractImage,
   retryCalendarEvent,
   retryDriveUpload,
+  retryEmail,
   type CreateContractResult,
 } from "@/app/(app)/contratos/actions";
 import type {
@@ -115,6 +134,8 @@ describe("createContract", () => {
   beforeEach(() => {
     mockUploadToDrive.mockReset().mockResolvedValue({ ok: true });
     mockUpsertCalendarEvent.mockReset().mockResolvedValue({ ok: true });
+    mockSendContractEmail.mockReset().mockResolvedValue({ ok: true });
+    mockTriggerWhatsApp.mockReset().mockResolvedValue({ ok: true });
   });
 
   beforeAll(async () => {
@@ -410,5 +431,96 @@ describe("createContract", () => {
 
     mockUpsertCalendarEvent.mockResolvedValue({ ok: true });
     expect(await retryCalendarEvent(contractId)).toEqual({ success: true });
+  });
+
+  // ---------------------------------------------------------------------
+  // Sprint 7 task 6 — email + WhatsApp appended to the same sequence.
+  // ---------------------------------------------------------------------
+
+  it("runs email and then the WhatsApp trigger after Calendar", async () => {
+    const result = await createContract(basePayload());
+    const { contractId } = result as Extract<CreateContractResult, { success: true }>;
+    createdContractIds.push(contractId);
+
+    expect(mockSendContractEmail).toHaveBeenCalledWith(contractId);
+    expect(mockTriggerWhatsApp).toHaveBeenCalledWith(contractId);
+
+    // Order is asserted through invocation sequence, not by spying on time:
+    // Calendar → email → WhatsApp, per spec §4.2 step 2.
+    const order = [
+      mockUpsertCalendarEvent.mock.invocationCallOrder[0],
+      mockSendContractEmail.mock.invocationCallOrder[0],
+      mockTriggerWhatsApp.mock.invocationCallOrder[0],
+    ];
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+  });
+
+  // Task 6's "done when": a deliberately-failed Resend must still leave
+  // Drive/Calendar complete and must not stop the WhatsApp trigger.
+  it("still completes Drive, Calendar and WhatsApp when Resend is down", async () => {
+    mockSendContractEmail.mockResolvedValue({ ok: false, message: "Resend caído" });
+
+    const result = await createContract(basePayload());
+    expect("success" in result && result.success).toBe(true);
+    const { contractId } = result as Extract<CreateContractResult, { success: true }>;
+    createdContractIds.push(contractId);
+
+    expect(mockUploadToDrive).toHaveBeenCalledTimes(1);
+    expect(mockUpsertCalendarEvent).toHaveBeenCalledTimes(1);
+    expect(mockTriggerWhatsApp).toHaveBeenCalledWith(contractId);
+
+    const contract = await prisma.contract.findUniqueOrThrow({ where: { id: contractId } });
+    expect(contract.emailSent).toBe(false);
+    expect(contract.imageGenerated).toBe(true);
+  });
+
+  it("still creates the contract when the email and WhatsApp steps throw", async () => {
+    mockSendContractEmail.mockRejectedValue(new Error("boom"));
+    mockTriggerWhatsApp.mockRejectedValue(new Error("boom"));
+
+    const result = await createContract(basePayload());
+    expect("success" in result && result.success).toBe(true);
+    createdContractIds.push(
+      (result as Extract<CreateContractResult, { success: true }>).contractId
+    );
+  });
+
+  // Sprint 7 task 3.
+  it("retryEmail re-runs only the email step and rejects a non-owning session", async () => {
+    const result = await createContract(basePayload());
+    const { contractId } = result as Extract<CreateContractResult, { success: true }>;
+    createdContractIds.push(contractId);
+    mockUploadToDrive.mockClear();
+    mockUpsertCalendarEvent.mockClear();
+    mockTriggerWhatsApp.mockClear();
+    mockSendContractEmail.mockClear();
+
+    mockAuth.mockResolvedValueOnce({
+      user: {
+        id: otherUserId,
+        role: "normal" as const,
+        name: "Other",
+        email: "other-test@example.com",
+      },
+      expires: new Date(Date.now() + 60_000).toISOString(),
+    });
+    expect("error" in (await retryEmail(contractId))).toBe(true);
+    expect(mockSendContractEmail).not.toHaveBeenCalled();
+
+    expect(await retryEmail(contractId)).toEqual({ success: true });
+    expect(mockSendContractEmail).toHaveBeenCalledWith(contractId);
+    // The point of independent retries: nothing else was touched.
+    expect(mockUploadToDrive).not.toHaveBeenCalled();
+    expect(mockUpsertCalendarEvent).not.toHaveBeenCalled();
+    expect(mockTriggerWhatsApp).not.toHaveBeenCalled();
+  });
+
+  it("retryEmail surfaces the step's own failure message", async () => {
+    const result = await createContract(basePayload());
+    const { contractId } = result as Extract<CreateContractResult, { success: true }>;
+    createdContractIds.push(contractId);
+
+    mockSendContractEmail.mockResolvedValue({ ok: false, message: "Resend caído" });
+    expect(await retryEmail(contractId)).toEqual({ error: "Resend caído" });
   });
 });

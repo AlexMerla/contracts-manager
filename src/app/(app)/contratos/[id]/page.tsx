@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 
 import { auth } from "@/lib/auth";
 import { scopeToOwner } from "@/lib/authorization";
+import { tryContractViewerUrl } from "@/lib/app-url";
 import { EVENT_TYPE_LABEL } from "@/lib/event-type";
 import { Icon } from "@/components/ui/icon";
 import {
@@ -25,6 +26,7 @@ import { Money } from "@/components/money";
 import { StatusPill } from "@/components/status-pill";
 import { PageHeader } from "@/components/page-header";
 
+import { CopyViewerLink } from "./copy-viewer-link";
 import { RetryImageButton } from "./retry-image-button";
 import { RetryStepButton } from "./retry-step-button";
 
@@ -109,6 +111,14 @@ export default async function ContratoDetailPage({ params }: ContratoDetailPageP
                 {!contract.calendarCreated && (
                   <RetryStepButton contractId={contract.id} step="calendar" />
                 )}
+                {/* Sprint 7 task 3. Gated on `clientEmail` too: a contract
+                    recorded without an address has no email step to retry,
+                    so offering a button that can only ever fail would be
+                    noise — the same rule `DeliveryStatus` applies to the
+                    list's pending indicator. */}
+                {!contract.emailSent && contract.clientEmail && (
+                  <RetryStepButton contractId={contract.id} step="email" />
+                )}
               </div>
             </div>
           </CardHeader>
@@ -132,6 +142,22 @@ export default async function ContratoDetailPage({ params }: ContratoDetailPageP
             <DetailField label="Dirección del cliente" value={contract.clientAddress} />
             <DetailField label="Lista de precios" value={contract.priceList.name} />
             <DetailField label="Creado por" value={contract.createdBy.name} />
+          </CardContent>
+        </Card>
+
+        {/* Sprint 7 task 5 — unconditional, on every contract: the ManyChat
+            trigger has no status column, so its failure is silent and this
+            is the only way staff can recover from it. */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Enlace para el cliente</CardTitle>
+            <CardDescription>
+              Es el enlace que ManyChat envía por WhatsApp y el que incluye el correo.
+              Cópielo para enviarlo a mano si el cliente no lo recibió.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <CopyViewerLink url={tryContractViewerUrl(contract.viewerToken)} />
           </CardContent>
         </Card>
 

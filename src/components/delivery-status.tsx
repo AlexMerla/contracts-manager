@@ -7,22 +7,39 @@ import { Icon } from "@/components/ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 // Spec §4.2 point 4: "The contract list UI must show a visual indicator for
-// any contract with an incomplete step." These are the three boolean status
+// any contract with an incomplete step." These are the boolean status
 // columns the sequential, in-process post-confirmation pipeline writes on
 // `contracts` — the same flags the detail page's retry controls read.
+//
+// Sprint 7 task 7 adds `emailSent` as the fourth step. The WhatsApp trigger
+// is deliberately NOT here: spec §6.4 defines no status column for it, so
+// there is nothing truthful to report — the detail page's copyable link
+// (task 5) is its fallback instead.
 export interface DeliverySteps {
   imageGenerated: boolean;
   driveUploaded: boolean;
   calendarCreated: boolean;
+  emailSent: boolean;
+  /**
+   * Whether the contract even has a `clientEmail`. `client_email` is nullable
+   * (spec §6.4), and for a contract recorded without one there is nothing to
+   * send and no retry that could ever succeed — so the email step is not
+   * "pending", it is not applicable. Without this, every walk-in contract
+   * taken by phone would wear a permanent warning badge and poison the "Con
+   * pendientes" count, training staff to ignore the indicator entirely.
+   */
+  hasClientEmail: boolean;
 }
 
-// Order matches the pipeline's own execution order (image → Drive → Calendar)
-// and the order of the retry buttons on the contract detail page, so the
-// tooltip reads in the same sequence the operator sees when they open it.
+// Order matches the pipeline's own execution order (image → Drive → Calendar
+// → correo) and the order of the retry buttons on the contract detail page,
+// so the tooltip reads in the same sequence the operator sees when they open
+// it.
 const DELIVERY_STEPS: { key: keyof DeliverySteps; label: string }[] = [
   { key: "imageGenerated", label: "Imagen del contrato" },
   { key: "driveUploaded", label: "Respaldo en Drive" },
   { key: "calendarCreated", label: "Evento en Calendar" },
+  { key: "emailSent", label: "Correo al cliente" },
 ];
 
 /**
@@ -31,17 +48,24 @@ const DELIVERY_STEPS: { key: keyof DeliverySteps; label: string }[] = [
  * indicator and the filter can never disagree about what "pendiente" means.
  */
 export function pendingDeliverySteps(steps: DeliverySteps): string[] {
-  return DELIVERY_STEPS.filter(({ key }) => !steps[key]).map(({ label }) => label);
+  return DELIVERY_STEPS.filter(({ key }) => {
+    if (key === "emailSent" && !steps.hasClientEmail) {
+      return false;
+    }
+    return !steps[key];
+  }).map(({ label }) => label);
 }
 
+/** Derived from `pendingDeliverySteps` rather than re-stating the rule, so the
+ * filter and the badge cannot drift apart as steps are added. */
 export function hasPendingDelivery(steps: DeliverySteps): boolean {
-  return !steps.imageGenerated || !steps.driveUploaded || !steps.calendarCreated;
+  return pendingDeliverySteps(steps).length > 0;
 }
 
 /**
  * Read-only indicator. Deliberately has NO retry action: the detail page
  * already owns one control per step (`RetryImageButton` / `RetryStepButton`),
- * and duplicating them per row would put three destructive-ish network calls
+ * and duplicating them per row would put four destructive-ish network calls
  * inside a scannable table. The tooltip points at the detail page instead.
  */
 export function DeliveryStatus(steps: DeliverySteps) {

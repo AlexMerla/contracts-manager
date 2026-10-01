@@ -46,11 +46,14 @@ export interface ContractRow {
   priceListId: string;
   priceListName: string;
   createdByName: string;
-  // Spec §4.2 point 4 — the three post-confirmation pipeline flags, surfaced
+  // Spec §4.2 point 4 — the four post-confirmation pipeline flags, surfaced
   // in the list so an incomplete step is visible without opening the contract.
   imageGenerated: boolean;
   driveUploaded: boolean;
   calendarCreated: boolean;
+  emailSent: boolean;
+  /** Not a status column — see `DeliverySteps` in @/components/delivery-status. */
+  hasClientEmail: boolean;
 }
 
 export interface ContractsFilters {
@@ -361,6 +364,8 @@ export function ContractsListView({
                       imageGenerated={contract.imageGenerated}
                       driveUploaded={contract.driveUploaded}
                       calendarCreated={contract.calendarCreated}
+                      emailSent={contract.emailSent}
+                      hasClientEmail={contract.hasClientEmail}
                     />
                   </TableCell>
                   <TableCell className="text-right">

@@ -11,10 +11,12 @@ import {
   type ContractImagePair,
 } from "@/lib/contract-template/generate-contract-image";
 import { getContractImageBuffers } from "@/lib/contract-template/get-contract-image-buffer";
+import type { ContractDeliveryStepResult } from "@/lib/contracts/delivery-step";
 import { nextFolio } from "@/lib/contracts/folio";
-import type { ContractDeliveryStepResult } from "@/lib/google/api-client";
+import { sendContractEmail } from "@/lib/email/contract-email";
 import { upsertContractCalendarEvent } from "@/lib/google/calendar";
 import { uploadContractImageToDrive } from "@/lib/google/drive";
+import { triggerContractWhatsApp } from "@/lib/whatsapp/manychat";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { EVENT_TYPE_LABEL } from "@/lib/event-type";
@@ -298,6 +300,41 @@ export async function createContract(
         console.error(`Calendar event threw for contract ${contract.id}:`, error);
       }
 
+      // Sprint 7 task 6 — the last two steps of §4.2's sequence. Same
+      // independent try/catch shape as Drive and Calendar above: a Resend
+      // outage must not stop the ManyChat trigger, and neither may stop this
+      // action from returning success.
+      //
+      // Email before WhatsApp, per §4.2 step 2's stated order. The ordering
+      // is not load-bearing the way Drive→Calendar is (neither step reads the
+      // other's output — both build the same public link from `viewerToken`),
+      // but WhatsApp goes last deliberately: it is the only step with no
+      // status column, so if the request dies partway, everything still
+      // retriable has already been attempted.
+      try {
+        const email = await sendContractEmail(contract.id);
+        if (!email.ok) {
+          console.error(`Email delivery failed for contract ${contract.id}: ${email.message}`);
+        }
+      } catch (error: unknown) {
+        console.error(`Email delivery threw for contract ${contract.id}:`, error);
+      }
+
+      // No `whatsappTriggered` column exists (spec §6.4 defines none, and
+      // that was re-confirmed as a product decision for this sprint), so a
+      // failure here is only logged — the copyable public link on the
+      // contract detail page (task 5) is the intended manual fallback.
+      try {
+        const whatsapp = await triggerContractWhatsApp(contract.id);
+        if (!whatsapp.ok) {
+          console.error(
+            `WhatsApp trigger failed for contract ${contract.id}: ${whatsapp.message}`
+          );
+        }
+      } catch (error: unknown) {
+        console.error(`WhatsApp trigger threw for contract ${contract.id}:`, error);
+      }
+
       return { success: true, contractId: contract.id, folio: contract.folio };
     } catch (error: unknown) {
       if (isFolioCollision(error) && attempt < MAX_FOLIO_ATTEMPTS) {
@@ -406,4 +443,15 @@ export async function retryDriveUpload(contractId: string): Promise<RetryDeliver
 /** Retries ONLY the Calendar event (upserts — see `upsertContractCalendarEvent`). */
 export async function retryCalendarEvent(contractId: string): Promise<RetryDeliveryStepResult> {
   return runContractDeliveryRetry(contractId, upsertContractCalendarEvent);
+}
+
+/**
+ * Sprint 7 task 3 — retries ONLY the client email. Reuses the exact same
+ * shared body as the Drive and Calendar retries, so the §5 ownership check is
+ * identical. `sendContractEmail` short-circuits on `emailSent === true`, so a
+ * double click (or a retry on an already-delivered contract) cannot send the
+ * client a second copy — §4.2's "retrying must not create duplicate emails".
+ */
+export async function retryEmail(contractId: string): Promise<RetryDeliveryStepResult> {
+  return runContractDeliveryRetry(contractId, sendContractEmail);
 }

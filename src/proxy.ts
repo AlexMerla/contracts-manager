@@ -12,12 +12,20 @@ import { SUPER_ONLY_PREFIXES } from "@/lib/navigation";
 // this guard can never disagree about which routes are super-only.
 const PUBLIC_PATHS = ["/login"];
 
+// Sprint-07 task 1 / spec §10: the contract viewer (and the route handler
+// that serves its JPEG) is reached by clients who have no account at all, so
+// it must be exempt from the redirect above. Guarded by the unguessable
+// `viewer_token` in the URL, never by a session — a prefix, not an exact
+// path, because the token and the `/image` sub-route follow it.
+const PUBLIC_PREFIXES = ["/api/auth", "/contracts/view/"];
+
 export default auth((req) => {
   const { pathname } = req.nextUrl;
   const session = req.auth;
 
   const isPublic =
-    PUBLIC_PATHS.includes(pathname) || pathname.startsWith("/api/auth");
+    PUBLIC_PATHS.includes(pathname) ||
+    PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 
   if (!session && !isPublic) {
     return NextResponse.redirect(new URL("/login", req.nextUrl.origin));

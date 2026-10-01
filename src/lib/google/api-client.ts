@@ -1,6 +1,12 @@
 import { getDecryptedRefreshToken, markGoogleConnectionError } from "@/lib/google/connection";
 import { GoogleRefreshError, refreshGoogleAccessToken } from "@/lib/google/oauth";
 
+// Sprint-07: the step-result type moved to `@/lib/contracts/delivery-step` so
+// the non-Google steps (Resend email, ManyChat) can share it without
+// importing a Google module. Re-exported here so every existing import site
+// (`actions.ts`, `drive.ts`, `calendar.ts`) keeps compiling unchanged.
+export type { ContractDeliveryStepResult } from "@/lib/contracts/delivery-step";
+
 // Sprint-06 task 5 — the auto-refreshing Google API client.
 //
 // Design contract: this module NEVER throws for an API/auth problem. Spec
@@ -25,10 +31,6 @@ export type GoogleApiFailure =
   | { ok: false; reason: "request_failed"; message: string; status: number | null };
 
 export type GoogleApiResult<T> = { ok: true; data: T } | GoogleApiFailure;
-
-/** What a single delivery step (Drive upload, Calendar event) reports back to
- * the confirm flow and to its manual retry action. */
-export type ContractDeliveryStepResult = { ok: true } | { ok: false; message: string };
 
 interface CachedAccessToken {
   /** The refresh token this access token was minted from. Caching *by* the

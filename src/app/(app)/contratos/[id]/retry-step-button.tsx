@@ -7,16 +7,21 @@ import { Button } from "@/components/ui/button";
 import {
   retryCalendarEvent,
   retryDriveUpload,
+  retryEmail,
   type RetryDeliveryStepResult,
 } from "../actions";
 
-export type DeliveryStep = "drive" | "calendar";
+export type DeliveryStep = "drive" | "calendar" | "email";
 
 // Sprint 6 task 8 / spec §4.2: one manual retry control per incomplete
 // delivery step, each re-running only its own step. Drive and Calendar share
 // this single component (they differ only in label and action) instead of
 // getting a near-identical copy each. `RetryImageButton` is left as-is —
 // folding it in here is a trivial follow-up, not sprint-06 scope.
+//
+// Sprint 7 task 3 adds `email` here rather than building a third retry
+// component: it differs from the other two only in its label and its action,
+// which is exactly what this map already parameterises.
 const STEPS: Record<
   DeliveryStep,
   {
@@ -34,6 +39,11 @@ const STEPS: Record<
     action: retryCalendarEvent,
     label: "Reintentar evento de Calendar",
     pendingLabel: "Creando evento…",
+  },
+  email: {
+    action: retryEmail,
+    label: "Reenviar correo al cliente",
+    pendingLabel: "Enviando…",
   },
 };
 

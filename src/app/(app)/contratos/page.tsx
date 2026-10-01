@@ -66,6 +66,10 @@ export default async function ContratosPage({ searchParams }: ContratosPageProps
     imageGenerated: contract.imageGenerated,
     driveUploaded: contract.driveUploaded,
     calendarCreated: contract.calendarCreated,
+    emailSent: contract.emailSent,
+    // Not a status column: a contract with no `clientEmail` has no email
+    // step at all, so it must not be counted as pending (see `DeliverySteps`).
+    hasClientEmail: contract.clientEmail != null && contract.clientEmail.trim() !== "",
   }));
 
   const { estado, q, tipoEvento, listaPrecios, estatusPago, pendientes } = await searchParams;
