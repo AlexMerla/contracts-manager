@@ -101,7 +101,8 @@ export function buildContractEmail(data: ContractEmailData): ContractEmailMessag
     "",
     ...amounts.map(([label, amount]) => `${label}: ${formatMoney(amount)}`),
     "",
-    "Si algún dato requiere corrección, respóndanos este correo y lo ajustamos.",
+    "Si algún dato requiere corrección, escríbanos a info@todoconunsoloproveedor.com " +
+      "o contáctenos por WhatsApp.",
     "",
     "Atentamente,",
     "Todo con un Solo Proveedor",
@@ -134,7 +135,7 @@ export function buildContractEmail(data: ContractEmailData): ContractEmailMessag
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 24px;border-top:1px solid #e4e4e7;border-bottom:1px solid #e4e4e7;">${amountRows}</table>
 <p style="margin:0 0 24px;"><a href="${escapeHtml(data.viewerUrl)}" style="display:inline-block;padding:12px 20px;background:#18181b;color:#ffffff;text-decoration:none;border-radius:8px;font-size:15px;">Ver el contrato en línea</a></p>
 <p style="margin:0 0 24px;font-size:13px;line-height:1.6;color:#52525b;">Si el botón no funciona, copie este enlace en su navegador:<br><span style="font-family:Menlo,Consolas,monospace;font-size:12px;word-break:break-all;">${escapeHtml(data.viewerUrl)}</span></p>
-<p style="margin:0 0 24px;font-size:15px;line-height:1.6;">Si algún dato requiere corrección, respóndanos este correo y lo ajustamos.</p>
+<p style="margin:0 0 24px;font-size:15px;line-height:1.6;">Si algún dato requiere corrección, escríbanos a <a href="mailto:info@todoconunsoloproveedor.com" style="color:#18181b;">info@todoconunsoloproveedor.com</a> o contáctenos por WhatsApp.</p>
 <p style="margin:0;font-size:15px;line-height:1.6;">Atentamente,<br>Todo con un Solo Proveedor</p>
 </td></tr></table>
 </body></html>`;
