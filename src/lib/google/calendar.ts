@@ -1,6 +1,7 @@
 import type { EventType } from "@/generated/prisma/client";
 import { EVENT_TYPE_LABEL } from "@/lib/event-type";
 import { googleApiFetch, type ContractDeliveryStepResult } from "@/lib/google/api-client";
+import { driveFileViewUrl } from "@/lib/google/drive";
 import { prisma } from "@/lib/prisma";
 
 // Sprint-06 task 7 — create/update the contract's event on the Master calendar.
@@ -18,8 +19,14 @@ export const EVENT_TIME_ZONE = "America/Mexico_City";
  * Google Calendar. A display convention, not a business rule. */
 export const DEFAULT_EVENT_DURATION_HOURS = 4;
 
+/** The slice of the Calendar v3 `Event` resource this module reads back.
+ * `htmlLink` is the "open in Google Calendar" URL the API returns on both
+ * `POST` (insert) and `PUT` (update); it is declared optional because the
+ * field is not contractually guaranteed on every response shape, and the
+ * caller must survive its absence by simply not recording a URL. */
 interface CalendarEvent {
   id: string;
+  htmlLink?: string;
 }
 
 type CalendarDateTime = { date: string } | { dateTime: string; timeZone: string };
@@ -93,12 +100,6 @@ function addHoursToNaive(naive: string, hours: number): string {
   const date = new Date(`${naive}:00.000Z`);
   date.setUTCHours(date.getUTCHours() + hours);
   return `${date.toISOString().slice(0, 16)}:00`;
-}
-
-/** `https://drive.google.com/file/d/{id}/view` — the Master Drive link
- * embedded in the Calendar description's 📎 line. */
-export function driveFileViewUrl(fileId: string): string {
-  return `https://drive.google.com/file/d/${fileId}/view`;
 }
 
 /** Builds one description block: a heading followed by `- Label: value`
@@ -296,7 +297,14 @@ export async function upsertContractCalendarEvent(
     if (updated.ok) {
       await prisma.contract.update({
         where: { id: contractId },
-        data: { calendarCreated: true },
+        // `htmlLink` is recorded on the UPDATE path too, not just on create:
+        // a contract created before this column existed has `calendarEventId`
+        // but no URL, and the next re-run (confirm or manual retry) is what
+        // backfills it — no data migration needed.
+        data: {
+          calendarCreated: true,
+          ...(updated.data.htmlLink ? { calendarEventUrl: updated.data.htmlLink } : {}),
+        },
       });
       return { ok: true };
     }
@@ -321,7 +329,13 @@ export async function upsertContractCalendarEvent(
 
   await prisma.contract.update({
     where: { id: contractId },
-    data: { calendarCreated: true, calendarEventId: created.data.id },
+    data: {
+      calendarCreated: true,
+      calendarEventId: created.data.id,
+      // Null-out on re-create: the previous URL pointed at the event that
+      // 404'd/410'd above, so keeping it would link staff to a dead event.
+      calendarEventUrl: created.data.htmlLink ?? null,
+    },
   });
 
   return { ok: true };

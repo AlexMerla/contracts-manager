@@ -8,13 +8,16 @@ import { regenerateContractImage } from "../actions";
 
 interface RetryImageButtonProps {
   contractId: string;
+  /** Compact copy for the "Documento y respaldos" row, where the row's own
+   *  label already says what is being regenerated. */
+  label?: string;
 }
 
 // Sprint 5 task 7 / spec §4.2: manual retry for a status column that
 // failed at confirm time. Only rendered when `imageGenerated` is `false`
 // (see the parent page) — once it succeeds, `revalidatePath` inside the
 // action refreshes the server-rendered page and this button disappears.
-export function RetryImageButton({ contractId }: RetryImageButtonProps) {
+export function RetryImageButton({ contractId, label }: RetryImageButtonProps) {
   const [isRetrying, setIsRetrying] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,7 +34,7 @@ export function RetryImageButton({ contractId }: RetryImageButtonProps) {
   return (
     <div className="flex flex-col items-end gap-1">
       <Button type="button" variant="outline" size="sm" disabled={isRetrying} onClick={onRetry}>
-        {isRetrying ? "Generando…" : "Reintentar generación de imagen"}
+        {isRetrying ? "Generando…" : (label ?? "Reintentar generación de imagen")}
       </Button>
       {error && (
         <p role="alert" className="text-xs font-normal text-destructive">

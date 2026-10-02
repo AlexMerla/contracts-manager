@@ -4,7 +4,6 @@ import {
   EVENT_TIME_ZONE,
   buildCalendarPackages,
   buildContractCalendarEvent,
-  driveFileViewUrl,
   type CalendarPackageRow,
   type CalendarSelectionRow,
   type ContractCalendarSource,
@@ -152,12 +151,6 @@ describe("buildContractCalendarEvent", () => {
     const event = buildContractCalendarEvent({ ...base, packages: [] });
 
     expect(event.description).not.toContain("📦 SERVICIOS");
-  });
-});
-
-describe("driveFileViewUrl", () => {
-  it("builds a Drive file view link from a file id", () => {
-    expect(driveFileViewUrl("abc123")).toBe("https://drive.google.com/file/d/abc123/view");
   });
 });
 

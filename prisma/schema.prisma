@@ -157,6 +157,7 @@ model Contract {
   driveFileId        String?        @map("drive_file_id")
   preContractDriveFileId String?    @map("pre_contract_drive_file_id")
   calendarEventId    String?        @map("calendar_event_id")
+  calendarEventUrl   String?        @map("calendar_event_url")
   priceListId        String         @map("price_list_id") @db.Uuid
   createdById        String         @map("created_by_id") @db.Uuid
   createdAt          DateTime       @default(now()) @db.Timestamptz(6) @map("created_at")

@@ -35,6 +35,16 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/** `https://drive.google.com/file/d/{id}/view` — the human-openable Drive link
+ * for a file this module uploaded. Used both by the Calendar description's 📎
+ * line and by the contract detail page's "Documento y respaldos" card.
+ *
+ * Lived in `calendar.ts` until the contract-detail redesign purely because
+ * Calendar was its first consumer; it is a Drive concern and belongs here. */
+export function driveFileViewUrl(fileId: string): string {
+  return `https://drive.google.com/file/d/${fileId}/view`;
+}
+
 /**
  * Resolves the Drive folder contracts are uploaded into.
  *

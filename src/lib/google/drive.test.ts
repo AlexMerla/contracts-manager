@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildDriveMultipartBody } from "@/lib/google/drive";
+import { buildDriveMultipartBody, driveFileViewUrl } from "@/lib/google/drive";
 
 // Only the pure multipart framing is covered here — the upload itself needs a
 // live Drive (see the design's testing notes).
@@ -49,5 +49,13 @@ describe("buildDriveMultipartBody", () => {
     const marker = Buffer.from("Content-Type: image/jpeg\r\n\r\n", "utf8");
     const start = body.indexOf(marker) + marker.length;
     expect(body.subarray(start, start + content.length).equals(content)).toBe(true);
+  });
+});
+
+// Moved here from calendar.test.ts by the contract-detail redesign, together
+// with the helper itself — it builds a Drive URL, not a Calendar one.
+describe("driveFileViewUrl", () => {
+  it("builds a Drive file view link from a file id", () => {
+    expect(driveFileViewUrl("abc123")).toBe("https://drive.google.com/file/d/abc123/view");
   });
 });
