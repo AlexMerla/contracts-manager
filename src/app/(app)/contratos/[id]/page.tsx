@@ -147,14 +147,23 @@ export default async function ContratoDetailPage({ params }: ContratoDetailPageP
 
         {/* Sprint 7 task 5 — unconditional, on every contract: the ManyChat
             trigger has no status column, so its failure is silent and this
-            is the only way staff can recover from it. */}
+            is the only way staff can recover from it. The retry button next
+            to it is equally unconditional, for the same reason — see
+            `RetryStepButton`'s `whatsapp` entry. */}
         <Card>
           <CardHeader>
-            <CardTitle>Enlace para el cliente</CardTitle>
-            <CardDescription>
-              Es el enlace que ManyChat envía por WhatsApp y el que incluye el correo.
-              Cópielo para enviarlo a mano si el cliente no lo recibió.
-            </CardDescription>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <CardTitle>Enlace para el cliente</CardTitle>
+                <CardDescription>
+                  Es el enlace que ManyChat envía por WhatsApp y el que incluye el correo.
+                  Cópielo para enviarlo a mano si el cliente no lo recibió.
+                </CardDescription>
+              </div>
+              {contract.clientMobile && (
+                <RetryStepButton contractId={contract.id} step="whatsapp" />
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             <CopyViewerLink url={tryContractViewerUrl(contract.viewerToken)} />

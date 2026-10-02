@@ -455,3 +455,14 @@ export async function retryCalendarEvent(contractId: string): Promise<RetryDeliv
 export async function retryEmail(contractId: string): Promise<RetryDeliveryStepResult> {
   return runContractDeliveryRetry(contractId, sendContractEmail);
 }
+
+/**
+ * Retries ONLY the WhatsApp trigger. There is no `whatsappTriggered` column
+ * (product decision, spec §4.2's pattern deliberately not extended here) —
+ * so unlike the other three retries, the caller cannot hide this button once
+ * it "succeeds"; it stays available indefinitely, same as the copyable link
+ * it sits next to (sprint-07 task 5).
+ */
+export async function retryWhatsApp(contractId: string): Promise<RetryDeliveryStepResult> {
+  return runContractDeliveryRetry(contractId, triggerContractWhatsApp);
+}
