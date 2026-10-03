@@ -335,7 +335,9 @@ export default async function ContratoDetailPage({ params }: ContratoDetailPageP
                       label="Ver"
                     />
                   ) : (
-                    <RetryImageButton contractId={contract.id} label="Reintentar" />
+                    <PendingAction>
+                      <RetryImageButton contractId={contract.id} label="Reintentar" />
+                    </PendingAction>
                   )
                 }
               />
@@ -345,7 +347,9 @@ export default async function ContratoDetailPage({ params }: ContratoDetailPageP
                 label="Respaldo en Google Drive"
                 action={
                   !contract.driveUploaded ? (
-                    <RetryStepButton contractId={contract.id} step="drive" />
+                    <PendingAction>
+                      <RetryStepButton contractId={contract.id} step="drive" />
+                    </PendingAction>
                   ) : contract.driveFileId ? (
                     <div className="flex items-center gap-2">
                       <ExternalAction href={driveFileViewUrl(contract.driveFileId)} label="Abrir" />
@@ -370,7 +374,9 @@ export default async function ContratoDetailPage({ params }: ContratoDetailPageP
                 label="Evento en Google Calendar"
                 action={
                   !contract.calendarCreated ? (
-                    <RetryStepButton contractId={contract.id} step="calendar" />
+                    <PendingAction>
+                      <RetryStepButton contractId={contract.id} step="calendar" />
+                    </PendingAction>
                   ) : contract.calendarEventUrl ? (
                     <ExternalAction href={contract.calendarEventUrl} label="Abrir" />
                   ) : (
@@ -438,6 +444,23 @@ function DetailField({ label, value }: { label: string; value: string | null }) 
     <div className="flex flex-col gap-0.5">
       <SectionLabel>{label}</SectionLabel>
       <span className="text-sm">{value ?? "—"}</span>
+    </div>
+  );
+}
+
+/** A quiet "Pendiente" dot ahead of the retry control — same vocabulary as
+ * the contracts list's `DeliveryStatus` badge (`Badge variant="warning" dot`),
+ * so a reader who already knows that color/word from the list recognizes it
+ * here too. Without this, a pending row and a completed row read as two
+ * equally-plain buttons side by side, and nothing marks which one is the
+ * exception. */
+function PendingAction({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex items-center gap-2">
+      <Badge variant="warning" dot>
+        Pendiente
+      </Badge>
+      {children}
     </div>
   );
 }
