@@ -41,6 +41,9 @@ import { StatusPill } from "@/components/status-pill";
 import { PageHeader } from "@/components/page-header";
 
 import { CopyViewerLink } from "./copy-viewer-link";
+import { NotesTab } from "./notes-tab";
+import { PaymentsTab } from "./payments-tab";
+import { RegisterPaymentDialog } from "./register-payment-dialog";
 import { ResendMenu } from "./resend-menu";
 import { RetryImageButton } from "./retry-image-button";
 import { RetryStepButton } from "./retry-step-button";
@@ -80,6 +83,11 @@ export default async function ContratoDetailPage({ params }: ContratoDetailPageP
       contractServiceSelections: { include: { service: true } },
       createdBy: { select: { name: true } },
       priceList: { select: { name: true } },
+      // Sprint 8 tasks 1-3: both tabs now read real data. Ordered
+      // chronologically (oldest first) so each reads as a running ledger —
+      // payments by folio-assignment order, notes newest-last like a log.
+      payments: { orderBy: { createdAt: "asc" } },
+      notes: { orderBy: { createdAt: "asc" }, include: { user: { select: { name: true } } } },
     },
   });
 
@@ -88,9 +96,17 @@ export default async function ContratoDetailPage({ params }: ContratoDetailPageP
   }
 
   const total = Number(contract.total);
-  const deposit = Number(contract.deposit);
-  const balance = Number(contract.balance);
   const eventDateLabel = dateFormatter.format(contract.eventDate);
+
+  // Sprint 8 task 2 / spec "Live Balance Derivation": `contracts.total` is a
+  // creation-time snapshot (never rewritten); the amount actually collected
+  // is always the live SUM of `payments`, never a stored column. The
+  // displayed "saldo por cobrar" clamps at zero rather than going negative
+  // on an accepted overpayment (design decision #6) — the row itself still
+  // keeps the real amount paid.
+  const totalPaid = contract.payments.reduce((sum, payment) => sum + Number(payment.amount), 0);
+  const balanceDue = Math.max(0, total - totalPaid);
+  const paidForDisplay = Math.min(totalPaid, total > 0 ? total : totalPaid);
 
   return (
     <>
@@ -125,11 +141,7 @@ export default async function ContratoDetailPage({ params }: ContratoDetailPageP
               hasEmail={Boolean(contract.clientEmail)}
               hasMobile={Boolean(contract.clientMobile)}
             />
-            {/* Visual only until Sprint 8 builds `payments`: there is no
-                payment Server Action yet, so this must never look clickable. */}
-            <Button type="button" size="sm" disabled>
-              Registrar pago
-            </Button>
+            <RegisterPaymentDialog contractId={contract.id} balanceDue={balanceDue} variant="header" />
           </>
         }
       />
@@ -138,18 +150,11 @@ export default async function ContratoDetailPage({ params }: ContratoDetailPageP
         <Tabs defaultValue="resumen">
           <TabsList>
             <TabsTab value="resumen">Resumen</TabsTab>
-            {/* `payments` and `notes` exist as Prisma models but no
-                application code reads or writes them yet (Sprint 8). They are
-                shown disabled rather than hidden so the shape of the finished
-                screen is visible — with an explicit "Pronto" badge instead of
-                a fabricated count, which would read as real data. */}
-            <TabsTab value="pagos" disabled>
+            <TabsTab value="pagos" count={contract.payments.length}>
               Pagos
-              <Badge variant="secondary">Pronto</Badge>
             </TabsTab>
-            <TabsTab value="notas" disabled>
+            <TabsTab value="notas" count={contract.notes.length}>
               Notas
-              <Badge variant="secondary">Pronto</Badge>
             </TabsTab>
           </TabsList>
 
@@ -245,6 +250,31 @@ export default async function ContratoDetailPage({ params }: ContratoDetailPageP
               </CardContent>
             </Card>
           </TabsPanel>
+
+          <TabsPanel value="pagos">
+            <PaymentsTab
+              payments={contract.payments.map((payment) => ({
+                id: payment.id,
+                folio: payment.folio,
+                paymentDate: payment.paymentDate,
+                concept: payment.concept,
+                method: payment.method,
+                amount: Number(payment.amount),
+              }))}
+            />
+          </TabsPanel>
+
+          <TabsPanel value="notas">
+            <NotesTab
+              contractId={contract.id}
+              notes={contract.notes.map((note) => ({
+                id: note.id,
+                text: note.text,
+                createdAt: note.createdAt,
+                authorName: note.user.name,
+              }))}
+            />
+          </TabsPanel>
         </Tabs>
 
         <aside className="flex flex-col gap-6">
@@ -256,59 +286,48 @@ export default async function ContratoDetailPage({ params }: ContratoDetailPageP
               <div className="flex flex-col gap-1">
                 <SectionLabel>Saldo por cobrar</SectionLabel>
                 <Money
-                  amount={balance}
-                  tone={balance > 0 ? "negative" : "muted"}
+                  amount={balanceDue}
+                  tone={balanceDue > 0 ? "negative" : "muted"}
                   className="font-heading text-2xl font-semibold"
                 />
               </div>
 
-              {/* Same clamp as the creation wizard's step 5 (step-confirm.tsx):
-                  a discount larger than the subtotal makes `total` negative,
-                  and a negative `value` or a `max` of 0 makes the Base UI
-                  track render nonsense.
-
-                  Labelled "Anticipo", never "Cobrado": `payments` has no
-                  application code yet, so the only money this system knows
-                  about is the deposit agreed at creation time — calling it
-                  "cobrado" would imply payments that were never recorded. */}
+              {/* Sprint 8 task 2 / spec "Live Balance Derivation": real money
+                  collected, derived live from SUM(payments) — never the
+                  frozen `contracts.balance` snapshot. Same zero-total clamp
+                  as the creation wizard's step 5 (step-confirm.tsx). */}
               <div className="flex flex-col gap-2">
-                <Progress
-                  tone="auto"
-                  value={Math.max(0, Math.min(deposit, total))}
-                  max={total > 0 ? total : 1}
-                />
+                <Progress tone="auto" value={Math.max(0, paidForDisplay)} max={total > 0 ? total : 1} />
                 <div className="flex items-baseline justify-between gap-2 text-sm">
-                  <span className="text-muted-foreground">Anticipo</span>
-                  <Money amount={deposit} />
+                  <span className="text-muted-foreground">Cobrado</span>
+                  <Money amount={totalPaid} />
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {total > 0
-                    ? `Cubre ${Math.round((Math.max(0, Math.min(deposit, total)) / total) * 100)}% del total.`
-                    : "El total del contrato es cero, no hay porcentaje que cubrir."}
+                  {total > 0 ? (
+                    <>
+                      Cobrado <Money amount={totalPaid} /> de <Money amount={total} />.
+                    </>
+                  ) : (
+                    "El total del contrato es cero, no hay nada que cobrar."
+                  )}
                 </p>
               </div>
 
-              {balance > 0 && (
+              {balanceDue > 0 && (
                 <Alert
                   tone="warning"
                   icon={CircleAlert}
                   title="Saldo pendiente antes del evento"
                   description={
                     <>
-                      Faltan <Money amount={balance} /> y el evento es el {eventDateLabel}. Cobre
+                      Faltan <Money amount={balanceDue} /> y el evento es el {eventDateLabel}. Cobre
                       el saldo antes de esa fecha.
                     </>
                   }
                 />
               )}
 
-              {/* Visual only — see the header button. */}
-              <Button type="button" className="w-full" disabled>
-                Registrar pago
-              </Button>
-              <p className="text-xs text-muted-foreground">
-                El registro de pagos todavía no está disponible; llega con el módulo de pagos.
-              </p>
+              <RegisterPaymentDialog contractId={contract.id} balanceDue={balanceDue} variant="sidebar" />
             </CardContent>
           </Card>
 
