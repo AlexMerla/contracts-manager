@@ -234,9 +234,13 @@ export default async function ContratoDetailPage({ params }: ContratoDetailPageP
                   </div>
                 )}
 
-                {/* Anticipo and Saldo deliberately do NOT repeat here: the
-                    sidebar's "Estado de cuenta" owns the money still owed, and
-                    two places showing the same balance is two places to drift. */}
+                {/* Saldo deliberately does NOT repeat here: the sidebar's
+                    "Estado de cuenta" owns the money still owed (derived live
+                    from SUM(payments)), and two places showing that same
+                    figure is two places to drift. Anticipo is different — it
+                    is the fixed amount agreed at signing (contracts.deposit,
+                    frozen like subtotal/total), not something payments move,
+                    so it belongs with the other frozen figures here. */}
                 <div className="flex flex-col gap-2 border-t pt-4">
                   <AmountRow label="Subtotal" amount={Number(contract.subtotal)} />
                   {contract.discount != null && (
@@ -246,6 +250,7 @@ export default async function ContratoDetailPage({ params }: ContratoDetailPageP
                     <AmountRow label="Cargo extra" amount={Number(contract.extraCharge)} />
                   )}
                   <AmountRow label="Total" amount={total} emphasize />
+                  <AmountRow label="Anticipo acordado" amount={Number(contract.deposit)} />
                 </div>
               </CardContent>
             </Card>
