@@ -234,13 +234,10 @@ export default async function ContratoDetailPage({ params }: ContratoDetailPageP
                   </div>
                 )}
 
-                {/* Saldo deliberately does NOT repeat here: the sidebar's
-                    "Estado de cuenta" owns the money still owed (derived live
-                    from SUM(payments)), and two places showing that same
-                    figure is two places to drift. Anticipo is different — it
-                    is the fixed amount agreed at signing (contracts.deposit,
-                    frozen like subtotal/total), not something payments move,
-                    so it belongs with the other frozen figures here. */}
+                {/* Anticipo and Saldo deliberately do NOT repeat here: the
+                    sidebar's "Estado de cuenta" owns the money still owed
+                    (derived live from SUM(payments)), and two places showing
+                    the same figures is two places to drift. */}
                 <div className="flex flex-col gap-2 border-t pt-4">
                   <AmountRow label="Subtotal" amount={Number(contract.subtotal)} />
                   {contract.discount != null && (
@@ -250,7 +247,6 @@ export default async function ContratoDetailPage({ params }: ContratoDetailPageP
                     <AmountRow label="Cargo extra" amount={Number(contract.extraCharge)} />
                   )}
                   <AmountRow label="Total" amount={total} emphasize />
-                  <AmountRow label="Anticipo acordado" amount={Number(contract.deposit)} />
                 </div>
               </CardContent>
             </Card>
@@ -288,6 +284,24 @@ export default async function ContratoDetailPage({ params }: ContratoDetailPageP
               <CardTitle>Estado de cuenta</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
+              {/* `paymentStatus` already encodes whether cumulative payments
+                  crossed `deposit` (pending = not yet; any other value =
+                  covered, per resolvePaymentStatus) — no new calculation,
+                  just surfacing that existing state next to the fixed amount
+                  (contracts.deposit, frozen like subtotal/total) it refers
+                  to. */}
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Anticipo acordado</span>
+                <div className="flex items-center gap-2">
+                  <Money amount={Number(contract.deposit)} />
+                  {contract.paymentStatus !== "pending" && (
+                    <Badge variant="success" dot>
+                      Cubierto
+                    </Badge>
+                  )}
+                </div>
+              </div>
+
               <div className="flex flex-col gap-1">
                 <SectionLabel>Saldo por cobrar</SectionLabel>
                 <Money
