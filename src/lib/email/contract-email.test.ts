@@ -13,15 +13,20 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 // source kept in the repo for reference). `sendContractEmail`'s full wiring
 // (a real send) is covered in src/app/(app)/contratos/contratos-actions.test.ts,
 // where the whole module is mocked. The one thing left to test directly here
-// is the idempotency guard: it calls the real `sendContractEmail` against a
-// real DB row, but is still Resend-safe because the `emailSent === true`
-// check is the FIRST thing the function does — it returns before
-// `resendFromAddress()`/`resendClient()` ever run, so no Resend client is
-// ever constructed for this test.
+// is the "no clientEmail" early return — the only path that still returns
+// before `resendFromAddress()`/`resendClient()` ever run, so it's the only
+// scenario this file can safely exercise against the real DB without ever
+// constructing a Resend client.
+//
+// There is deliberately NO idempotency-guard test here anymore: resending an
+// already-`emailSent` contract is now a real, intentional action (the
+// "Reenviar" menu is always available, same as WhatsApp's retry — see
+// sendContractEmail's doc comment), not something this file could verify
+// without actually calling Resend.
 import { sendContractEmail } from "@/lib/email/contract-email";
 import { prisma } from "@/lib/prisma";
 
-describe("sendContractEmail (idempotency guard, real DB, no Resend call)", () => {
+describe("sendContractEmail (no-clientEmail guard, real DB, no Resend call)", () => {
   const userId = randomUUID();
   const priceListId = randomUUID();
   const contractId = randomUUID();
@@ -30,25 +35,21 @@ describe("sendContractEmail (idempotency guard, real DB, no Resend call)", () =>
     await prisma.user.create({
       data: {
         id: userId,
-        name: "Throwaway (contract-email idempotency test)",
-        email: "throwaway-contract-email-test@example.com",
+        name: "Throwaway (contract-email no-clientEmail test)",
+        email: "throwaway-contract-email-noemail-test@example.com",
         passwordHash: "unused-in-this-test",
         role: "normal",
       },
     });
     await prisma.priceList.create({
-      data: { id: priceListId, name: "Throwaway (contract-email idempotency test)" },
+      data: { id: priceListId, name: "Throwaway (contract-email no-clientEmail test)" },
     });
     await prisma.contract.create({
       data: {
         id: contractId,
         folio: `throwaway-${contractId}`,
-        clientName: "Cliente de prueba",
-        // A real email is present on purpose: the guard must short-circuit
-        // on `emailSent` BEFORE it ever gets to the "no clientEmail" check,
-        // so this proves it's actually the first gate, not a side effect of
-        // the client having no address to send to.
-        clientEmail: "cliente-de-prueba@example.com",
+        clientName: "Cliente sin correo",
+        clientEmail: null,
         eventType: "other",
         eventDate: new Date("2027-01-01T00:00:00.000Z"),
         subtotal: 0,
@@ -58,7 +59,6 @@ describe("sendContractEmail (idempotency guard, real DB, no Resend call)", () =>
         viewerToken: randomUUID(),
         priceListId,
         createdById: userId,
-        emailSent: true,
       },
     });
   });
@@ -69,8 +69,11 @@ describe("sendContractEmail (idempotency guard, real DB, no Resend call)", () =>
     await prisma.user.delete({ where: { id: userId } });
   });
 
-  it("returns ok without attempting to send again", async () => {
+  it("returns an error instead of attempting to send", async () => {
     const result = await sendContractEmail(contractId);
-    expect(result).toEqual({ ok: true });
+    expect(result).toEqual({
+      ok: false,
+      message: "El contrato no tiene correo del cliente; no hay a dónde enviarlo.",
+    });
   });
 });

@@ -74,10 +74,15 @@ function resendClient(): Resend {
  * is ever attached — the pre-contract render exists for the business's own
  * Drive archive, never for the client.
  *
- * Idempotency (spec §4.2 step 5, "no duplicate emails"): an early return on
- * `emailSent === true`. Unlike Drive, there is no per-artifact id to check
- * and no way to un-send, so the flag is the only guard — which is why the
- * flag is written only after Resend has accepted the message.
+ * No idempotency guard on `emailSent` (deliberately removed — see the open
+ * question this answers): this is called automatically exactly ONCE, from
+ * `createContract`'s confirm pipeline, so there is no automatic-retry path
+ * that could double-send on its own. Every OTHER call comes from the
+ * "Reenviar" menu's explicit, human click — a real request to resend, which
+ * must actually resend, same as `triggerContractWhatsApp` has never gated on
+ * a "sent already" flag. `emailSent` still gets set to `true` after every
+ * successful send; it is read elsewhere only as "has this ever gone out"
+ * (the list's pending-steps indicator), never as a block.
  */
 export async function sendContractEmail(
   contractId: string
@@ -88,15 +93,10 @@ export async function sendContractEmail(
       folio: true,
       clientName: true,
       clientEmail: true,
-      emailSent: true,
     },
   });
   if (!contract) {
     return { ok: false, message: "Contrato no encontrado." };
-  }
-
-  if (contract.emailSent) {
-    return { ok: true };
   }
 
   if (!contract.clientEmail) {
@@ -154,6 +154,14 @@ export async function sendContractEmail(
       message: `No se pudo enviar el correo al cliente: ${response.error.message}`,
     };
   }
+
+  // Resend acknowledged the request with no `error` — log the message id it
+  // handed back so a "said it sent, but it never shows up in Resend's own
+  // dashboard" report has something concrete to search by, instead of a
+  // dead end once `emailSent` flips and this path can't be re-run.
+  console.log(
+    `Resend accepted contract ${contract.folio}'s email (id ${response.data?.id ?? "unknown"}).`
+  );
 
   await prisma.contract.update({
     where: { id: contractId },
