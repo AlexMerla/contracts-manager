@@ -1,0 +1,135 @@
+<!--
+  Resend dashboard template: "precontract-confirmation" (template id:
+  precontract-confirmation-1). Content is fixed except for one text-only
+  variable, CLIENT_NAME, used in the greeting — never inside an href/src
+  attribute, which sidesteps Resend's known bug where template variables
+  inside HTML attributes get mangled when sent via the REST API
+  (resend/react-email#3247). The recipient address and the attached
+  contract image are set by the app's code
+  (src/lib/email/contract-email.ts), not by this template.
+
+  Paste this directly into Resend's template editor (switch it to "Code"/
+  HTML mode, not the visual block editor, so the inline styles survive).
+  Resend's variable syntax is triple-brace: {{{CLIENT_NAME}}}.
+-->
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Confirmación de precontrato — Todo con un Solo Proveedor</title>
+  </head>
+  <body style="margin:0;padding:24px 12px;background:#f4f4f5;font-family:Helvetica,Arial,sans-serif;color:#18181b;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;">
+      <tr>
+        <td style="padding:32px 32px 28px;">
+          <p style="margin:0 0 4px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#71717a;">
+            Confirmación de precontrato
+          </p>
+          <h1 style="margin:0 0 20px;font-size:20px;line-height:1.3;">
+            Todo con un Solo Proveedor
+          </h1>
+
+          <p style="margin:0 0 16px;font-size:15px;line-height:1.6;">
+            Estimado(a) {{{CLIENT_NAME}}}:
+          </p>
+
+          <p style="margin:0 0 16px;font-size:15px;line-height:1.6;">
+            Agradecemos sinceramente la confianza que deposita en nosotros al
+            elegirnos como su proveedor de servicios para este evento tan
+            especial. Para nuestro equipo es un verdadero privilegio formar
+            parte de momentos significativos y contribuir a que cada detalle
+            sea tal como usted lo ha imaginado.
+          </p>
+
+          <p style="margin:0 0 16px;font-size:15px;line-height:1.6;">
+            Por medio del presente, le informamos que este correo corresponde
+            a la confirmación de su <strong>precontrato</strong>.
+          </p>
+
+          <p style="margin:0 0 16px;font-size:15px;line-height:1.6;">
+            Con el fin de garantizar la reserva de la fecha y de los servicios
+            seleccionados, le solicitamos realizar el pago de la separación
+            correspondiente.
+          </p>
+
+          <p style="margin:0 0 24px;font-size:15px;line-height:1.6;">
+            Una vez recibido el pago y el comprobante, su reservación quedará
+            confirmada de manera oficial, y procederemos a enviarle el
+            contrato formal para su revisión y firma.
+          </p>
+
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 24px;background:#f4f4f5;border-radius:8px;">
+            <tr>
+              <td style="padding:20px 20px 16px;">
+                <p style="margin:0 0 12px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#52525b;">
+                  Datos bancarios
+                </p>
+
+                <p style="margin:0 0 2px;font-size:12px;color:#71717a;">
+                  Número de cuenta:
+                </p>
+                <p style="margin:0 0 12px;font-size:15px;font-weight:600;">
+                  &lt;NÚMERO DE CUENTA&gt;
+                </p>
+
+                <p style="margin:0 0 2px;font-size:12px;color:#71717a;">
+                  CLABE:
+                </p>
+                <p style="margin:0 0 12px;font-size:15px;font-weight:600;">
+                  &lt;CLABE&gt;
+                </p>
+
+                <p style="margin:0 0 2px;font-size:12px;color:#71717a;">
+                  Banco:
+                </p>
+                <p style="margin:0 0 16px;font-size:15px;font-weight:600;">
+                  &lt;BANCO&gt;
+                </p>
+
+                <p style="margin:0 0 8px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#52525b;">
+                  Favor de incluir lo siguiente en el concepto:
+                </p>
+                <p style="margin:0 0 4px;font-size:14px;line-height:1.5;">
+                  · Fecha del evento
+                </p>
+                <p style="margin:0 0 12px;font-size:14px;line-height:1.5;">
+                  · Iniciales de su nombre completo
+                </p>
+
+                <p style="margin:0 0 2px;font-size:12px;color:#71717a;">
+                  Ejemplo:
+                </p>
+                <p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#52525b;">
+                  Evento 2 de diciembre de 2026 a nombre de Carlos Hernandez
+                  Ibarra
+                </p>
+
+                <p style="margin:0 0 2px;font-size:12px;color:#71717a;">
+                  Concepto:
+                </p>
+                <p style="margin:0;font-size:15px;font-weight:600;">
+                  02Dic26 CHI
+                </p>
+              </td>
+            </tr>
+          </table>
+
+          <p style="margin:0 0 4px;font-size:15px;line-height:1.6;">
+            Atentamente,
+          </p>
+          <p style="margin:0 0 20px;font-size:15px;line-height:1.6;">
+            Alex Merla<br />CEO
+          </p>
+
+          <p style="margin:0 0 2px;font-size:13px;line-height:1.6;color:#52525b;">
+            Tel — (81) 1157 0493
+          </p>
+          <p style="margin:0;font-size:13px;line-height:1.6;color:#52525b;">
+            www.todoconunsoloproveedor.com
+          </p>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
