@@ -18,9 +18,13 @@ Dependency note: 1-2 (payments) and 3 (notes) are independent of each other. 4-5
 
 - [x] **3. Build the notes module.** Add/view notes per contract (§6.12), scoped per §5 the same way as payments. Done when a `normal` user can add and see notes only on contracts they created.
 
-- [ ] **4. Build filterable reports.** Filter by date range, price list, creating user, client, and event type (§9). `normal` users' results are always scoped to `createdById = self`, regardless of what filter values are submitted. Done when a `normal` user cannot see another user's contracts in a report even by explicitly selecting that user as a filter.
+- [x] **4. Build filterable reports.** Filter by date range, price list, creating user, client, and event type (§9). `normal` users' results are always scoped to `createdById = self`, regardless of what filter values are submitted. Done when a `normal` user cannot see another user's contracts in a report even by explicitly selecting that user as a filter.
 
-- [ ] **5. Add Excel export for reports.** Use `exceljs` to export the currently-filtered report results to `.xlsx` (§9 — no PDF export required). Done when the exported file's rows match the on-screen filtered results exactly, including when no filters are applied.
+  _Verified: Route `/reportes` built with all six filters (date range on eventDate, price list, creating user, event type, client). Double authorization layer enforced server-side (both `page.tsx` and `export/route.ts` call `scopeToOwner` + `parseReportFilters` with role enforcement). All 244 tests pass (tsc/eslint clean). Manual normal-vs-super screen verification deferred to task 8._
+
+- [x] **5. Add Excel export for reports.** Use `exceljs` to export the currently-filtered report results to `.xlsx` (§9 — no PDF export required). Done when the exported file's rows match the on-screen filtered results exactly, including when no filters are applied.
+
+  _Verified: Export route via `GET /reportes/export` (nodejs runtime, `force-dynamic`) with exceljs. Seven-column Excel workbook (Folio, Cliente, Lista de precios, Creó, Total, Cobrado, Fecha with dd/mm/yyyy format as a real date cell), optional "Resumen por usuario creador" sheet for `super` only. Both screen and export call identical `fetchReportRows`/`filterReportRows` pair — rows match exactly. All 244 tests pass. Manual normal-vs-super download verification deferred to task 8._
 
 - [ ] **6. Build the calendar view.** Using react-big-calendar or FullCalendar, show events derived from `contracts.eventDate`/`eventTime`. Scoped per the earlier decision: `normal` sees only their own contracts' events, `super` sees all. Done when a `normal` user's calendar never renders another user's event, even indirectly (e.g. via a shared "all events" count).
 

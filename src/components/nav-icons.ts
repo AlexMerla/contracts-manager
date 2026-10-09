@@ -1,5 +1,6 @@
 import {
   BookOpen,
+  ChartColumn,
   ConciergeBell,
   FileText,
   LayoutDashboard,
@@ -22,5 +23,6 @@ export const NAV_ICONS: Record<NavIconName, LucideIcon> = {
   ListOrdered,
   Users,
   FileText,
+  ChartColumn,
   Settings,
 };

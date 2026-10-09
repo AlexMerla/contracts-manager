@@ -9,6 +9,7 @@ export type NavIconName =
   | "ListOrdered"
   | "Users"
   | "FileText"
+  | "ChartColumn"
   | "Settings";
 
 export type NavGroup = "Catálogo" | "Administración";
@@ -34,6 +35,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { href: "/paquetes", label: "Paquetes", icon: "Package", group: "Catálogo", role: "super" },
   { href: "/listas-precios", label: "Listas de precios", icon: "ListOrdered", group: "Catálogo", role: "super" },
   { href: "/usuarios", label: "Usuarios", icon: "Users", group: "Administración", role: "super" },
+  { href: "/reportes", label: "Reportes", icon: "ChartColumn", group: "Administración", role: "normal" },
   { href: "/configuracion", label: "Configuración", icon: "Settings", group: "Administración", role: "super" },
 ] as const;
 
