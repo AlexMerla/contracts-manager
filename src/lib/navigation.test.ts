@@ -26,12 +26,13 @@ describe("navigation", () => {
       "/",
       "/catalogo",
       "/contratos",
+      "/calendario",
       "/reportes",
     ]);
   });
 
-  it("navItemsForRole('super') returns all 10 items", () => {
-    expect(navItemsForRole("super")).toHaveLength(10);
+  it("navItemsForRole('super') returns all 11 items", () => {
+    expect(navItemsForRole("super")).toHaveLength(11);
   });
 
   it("every NAV_ITEMS icon resolves in NAV_ICONS", () => {

@@ -36,7 +36,7 @@ describe("buildContractCalendarEvent", () => {
   it("builds a timed event in the Mexico City zone with the default duration", () => {
     const event = buildContractCalendarEvent(base);
 
-    expect(event.summary).toBe("XV — María López (A-0042)");
+    expect(event.summary).toBe("XV años — María López (A-0042)");
     expect(event.location).toBe("Salón Jardín - Av. Reforma 100");
     expect(event.start).toEqual({ dateTime: "2026-11-14T20:30:00", timeZone: EVENT_TIME_ZONE });
     expect(event.end).toEqual({ dateTime: "2026-11-15T00:30:00", timeZone: EVENT_TIME_ZONE });

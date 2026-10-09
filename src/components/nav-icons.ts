@@ -1,5 +1,6 @@
 import {
   BookOpen,
+  CalendarDays,
   ChartColumn,
   ConciergeBell,
   FileText,
@@ -23,6 +24,7 @@ export const NAV_ICONS: Record<NavIconName, LucideIcon> = {
   ListOrdered,
   Users,
   FileText,
+  CalendarDays,
   ChartColumn,
   Settings,
 };

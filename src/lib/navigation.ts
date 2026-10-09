@@ -9,6 +9,7 @@ export type NavIconName =
   | "ListOrdered"
   | "Users"
   | "FileText"
+  | "CalendarDays"
   | "ChartColumn"
   | "Settings";
 
@@ -30,6 +31,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { href: "/", label: "Inicio", icon: "LayoutDashboard", group: null, role: "normal" },
   { href: "/catalogo", label: "Catálogo", icon: "BookOpen", group: null, role: "normal" },
   { href: "/contratos", label: "Contratos", icon: "FileText", group: null, role: "normal" },
+  { href: "/calendario", label: "Calendario", icon: "CalendarDays", group: null, role: "normal" },
   { href: "/categorias", label: "Categorías", icon: "Tags", group: "Catálogo", role: "super" },
   { href: "/servicios", label: "Servicios", icon: "ConciergeBell", group: "Catálogo", role: "super" },
   { href: "/paquetes", label: "Paquetes", icon: "Package", group: "Catálogo", role: "super" },

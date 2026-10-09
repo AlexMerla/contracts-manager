@@ -32,6 +32,9 @@
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar: var(--sidebar);
+  --color-chart-8: var(--chart-8);
+  --color-chart-7: var(--chart-7);
+  --color-chart-6: var(--chart-6);
   --color-chart-5: var(--chart-5);
   --color-chart-4: var(--chart-4);
   --color-chart-3: var(--chart-3);
@@ -121,11 +124,24 @@
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: var(--accent-500);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  /* Categorical palette — docs/design-system.md §1.1 fixed order:
+     indigo, magenta, violet, teal, orange, sky, green, gray. Same index =
+     same meaning on every screen; `EVENT_TYPE_CHART_TOKEN` in
+     src/lib/event-type.ts owns the event-type assignment. Hex, matching the
+     --brand-* / --accent-* style, replacing shadcn's grayscale placeholders.
+     1 and 2 repeat the accent/brand values on purpose (the Calendario mockup
+     draws Boda in the accent indigo and Graduación in the brand magenta) but
+     are written out literally — a future change to the action colour must
+     not silently recolour data. */
+  --chart-1: #5a5de0;
+  --chart-2: #e22d89;
+  --chart-3: #9333ea;
+  --chart-4: #0d9488;
+  --chart-5: #e2701f;
+  --chart-6: #2a9fe0;
+  --chart-7: #3d9b35;
+  --chart-8: #6b7280;
+  --chart-grid: oklch(0.922 0 0);
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
@@ -165,11 +181,18 @@
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: var(--accent-500);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  /* Same hues, lifted in lightness so they hold contrast on the dark canvas
+     (the light values sit around 4:1 on white and drop below 3:1 on
+     oklch(0.145)). Index meaning is identical to light mode. */
+  --chart-1: #8487ea;
+  --chart-2: #f06aa9;
+  --chart-3: #b17bf2;
+  --chart-4: #2cc0ae;
+  --chart-5: #f0923f;
+  --chart-6: #58b8ea;
+  --chart-7: #62bd56;
+  --chart-8: #9aa1ad;
+  --chart-grid: oklch(1 0 0 / 12%);
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
