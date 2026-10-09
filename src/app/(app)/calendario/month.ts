@@ -4,33 +4,16 @@
  * UTC midnight. Doing any of this with local-time `Date` constructors would
  * reproduce the off-by-one day the project already hit in
  * `src/app/(app)/contratos/page.tsx` (see its `timeZone: "UTC"` comment).
+ *
+ * `APP_TIME_ZONE` and `todayInAppTimeZone` moved to `src/lib/dates.ts` when
+ * the Sprint-8 dashboard needed them as well — a `src/lib/*` module importing
+ * from a route folder would invert the dependency direction. They are
+ * re-exported here so this module's public API is unchanged.
  */
 
-/** The business operates in Mexico (spec §0). Mirrors `EVENT_TIME_ZONE` in
- *  `src/lib/google/calendar.ts`, duplicated so this page doesn't have to
- *  import the googleapis-adjacent module for a string. */
-export const APP_TIME_ZONE = "America/Mexico_City";
+import { APP_TIME_ZONE, todayInAppTimeZone } from "@/lib/dates";
 
-const partsFormatter = new Intl.DateTimeFormat("en-CA", {
-  timeZone: APP_TIME_ZONE,
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-});
-
-/**
- * "Today" as the operator in Mexico experiences it, normalised to UTC
- * midnight so it is directly comparable with an `@db.Date` value. A server
- * running in UTC would otherwise consider it "tomorrow" after 18:00 local.
- */
-export function todayInAppTimeZone(now: Date = new Date()): Date {
-  const parts = partsFormatter.formatToParts(now);
-  const read = (type: Intl.DateTimeFormatPartTypes): number => {
-    const part = parts.find((candidate) => candidate.type === type);
-    return part ? Number(part.value) : 0;
-  };
-  return new Date(Date.UTC(read("year"), read("month") - 1, read("day")));
-}
+export { APP_TIME_ZONE, todayInAppTimeZone };
 
 /** A calendar month. `month` is 0-indexed, like `Date.getUTCMonth()`. */
 export interface CalendarMonth {

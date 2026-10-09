@@ -35,6 +35,19 @@ export interface ReportFilters {
   cliente: string;
 }
 
+/**
+ * The minimum a row must carry to be summarised per creator. `ReportRow`
+ * satisfies it structurally; so does the Sprint-8 dashboard's
+ * `DashboardContract`, which is how both screens share ONE implementation of
+ * the "por usuario" aggregation instead of two that can drift apart.
+ */
+export interface CreatorSummarizable {
+  readonly createdById: string;
+  readonly createdByName: string;
+  readonly collected: number;
+  readonly balanceDue: number;
+}
+
 export interface CreatorSummary {
   createdById: string;
   createdByName: string;
@@ -136,7 +149,7 @@ export function roundToCents(amount: number): number {
  * `contract.createdById`, and the summary must reflect the client-side
  * FILTERED array, which the database never sees. Pass the filtered rows.
  */
-export function summarizeByCreator(rows: readonly ReportRow[]): CreatorSummary[] {
+export function summarizeByCreator(rows: readonly CreatorSummarizable[]): CreatorSummary[] {
   const byCreator = new Map<string, CreatorSummary>();
 
   for (const row of rows) {
