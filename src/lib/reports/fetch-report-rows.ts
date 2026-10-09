@@ -53,6 +53,11 @@ export async function fetchReportRows(session: Session): Promise<ReportRow[]> {
       total,
       collected,
       balanceDue: roundToCents(Math.max(0, total - collected)),
+      // Pass-through for the on-screen badge only (resolved Q6). The query
+      // above is UNCHANGED — `findMany` already returns the whole contract
+      // row, so this reads a field that was always in memory. No `where`
+      // clause, no total, and no filter was touched.
+      isCancelled: contract.contractStatus === "cancelled",
     } satisfies ReportRow;
   });
 }

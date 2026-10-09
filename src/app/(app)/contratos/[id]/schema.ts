@@ -37,3 +37,19 @@ export const addNoteSchema = z.object({
 });
 
 export type AddNoteValues = z.infer<typeof addNoteSchema>;
+
+// Spec §6.4 / §12 item 5: `cancellation_reason` is "required when
+// contract_status = cancelled", so the reason is not an optional note — it is
+// the only field of the action, and the mandatory typed justification IS the
+// deliberate act (see cancel-contract-dialog.tsx). Trimmed before `min(1)` so
+// a whitespace-only reason is rejected on BOTH sides, same as `addNoteSchema`.
+export const cancelContractSchema = z.object({
+  contractId: z.string().uuid(),
+  reason: z
+    .string()
+    .trim()
+    .min(1, "Escriba el motivo de la cancelación.")
+    .max(500, "El motivo no puede exceder los 500 caracteres."),
+});
+
+export type CancelContractValues = z.infer<typeof cancelContractSchema>;

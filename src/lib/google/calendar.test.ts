@@ -15,6 +15,7 @@ const base: ContractCalendarSource = {
   folio: "A-0042",
   clientName: "María López",
   eventType: "quinceanera",
+  contractStatus: "confirmed",
   eventDate: new Date("2026-11-14T00:00:00.000Z"),
   eventTime: new Date("1970-01-01T20:30:00.000Z"),
   celebrated: "Sofía",
@@ -40,6 +41,17 @@ describe("buildContractCalendarEvent", () => {
     expect(event.location).toBe("Salón Jardín - Av. Reforma 100");
     expect(event.start).toEqual({ dateTime: "2026-11-14T20:30:00", timeZone: EVENT_TIME_ZONE });
     expect(event.end).toEqual({ dateTime: "2026-11-15T00:30:00", timeZone: EVENT_TIME_ZONE });
+  });
+
+  // Resolved Q4 (contract-cancellation): the event is RETITLED, never
+  // deleted, and nothing else about the body changes — the operator still
+  // needs the client's contact details to settle a cancellation.
+  it("prefixes the summary with [CANCELADO] for a cancelled contract and leaves the body intact", () => {
+    const event = buildContractCalendarEvent({ ...base, contractStatus: "cancelled" });
+
+    expect(event.summary).toBe("[CANCELADO] XV años — María López (A-0042)");
+    expect(event.description).toBe(buildContractCalendarEvent(base).description);
+    expect(event.location).toBe("Salón Jardín - Av. Reforma 100");
   });
 
   it("builds an all-day event with an exclusive end date when no time is recorded", () => {

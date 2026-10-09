@@ -40,6 +40,7 @@ import { Money } from "@/components/money";
 import { StatusPill } from "@/components/status-pill";
 import { PageHeader } from "@/components/page-header";
 
+import { CancelContractDialog } from "./cancel-contract-dialog";
 import { CopyViewerLink } from "./copy-viewer-link";
 import { NotesTab } from "./notes-tab";
 import { PaymentsTab } from "./payments-tab";
@@ -98,6 +99,12 @@ export default async function ContratoDetailPage({ params }: ContratoDetailPageP
   const total = Number(contract.total);
   const eventDateLabel = dateFormatter.format(contract.eventDate);
 
+  // Drives three things on this page: the Cancelación card's mode, and the
+  // removal of BOTH "Registrar pago" triggers — `registerPayment` now rejects
+  // a cancelled contract server-side (resolved Q3), so leaving the dialog
+  // reachable would only offer a form that cannot succeed.
+  const isCancelled = contract.contractStatus === "cancelled";
+
   // Sprint 8 task 2 / spec "Live Balance Derivation": `contracts.total` is a
   // creation-time snapshot (never rewritten); the amount actually collected
   // is always the live SUM of `payments`, never a stored column. The
@@ -141,7 +148,13 @@ export default async function ContratoDetailPage({ params }: ContratoDetailPageP
               hasEmail={Boolean(contract.clientEmail)}
               hasMobile={Boolean(contract.clientMobile)}
             />
-            <RegisterPaymentDialog contractId={contract.id} balanceDue={balanceDue} variant="header" />
+            {!isCancelled && (
+              <RegisterPaymentDialog
+                contractId={contract.id}
+                balanceDue={balanceDue}
+                variant="header"
+              />
+            )}
           </>
         }
       />
@@ -346,7 +359,13 @@ export default async function ContratoDetailPage({ params }: ContratoDetailPageP
                 />
               )}
 
-              <RegisterPaymentDialog contractId={contract.id} balanceDue={balanceDue} variant="sidebar" />
+              {!isCancelled && (
+                <RegisterPaymentDialog
+                  contractId={contract.id}
+                  balanceDue={balanceDue}
+                  variant="sidebar"
+                />
+              )}
             </CardContent>
           </Card>
 
@@ -447,20 +466,50 @@ export default async function ContratoDetailPage({ params }: ContratoDetailPageP
               <CardTitle>Cancelación</CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
-              <p className="text-sm text-muted-foreground">
-                Si el evento no se realizará, cancele el contrato indicando el motivo. El
-                historial se conserva.
-              </p>
-              {/* Visual only. `cancellation_reason` exists in the schema but
-                  there is NO cancellation Server Action in this codebase, and
-                  this change deliberately does not add one — a control that
-                  writes nothing must also look like it writes nothing. */}
-              <Button type="button" variant="destructive" disabled>
-                Cancelar contrato
-              </Button>
-              <p className="text-xs text-muted-foreground">
-                La cancelación todavía no está disponible.
-              </p>
+              {isCancelled ? (
+                // Already cancelled: the card becomes the record of it. No
+                // un-cancel control exists (resolved Q7) — reversal is a
+                // manual DB operation, so offering nothing here is honest.
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    Este contrato está cancelado. El enlace del cliente ya no funciona y no
+                    se pueden registrar más pagos.
+                  </p>
+                  <div className="flex flex-col gap-1">
+                    <SectionLabel>Motivo registrado</SectionLabel>
+                    <p className="text-sm">{contract.cancellationReason ?? "—"}</p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    Si el evento no se realizará, cancele el contrato indicando el motivo. El
+                    historial se conserva.
+                  </p>
+                  {/* Spec §5 L106 (`Contracts — cancel | No | Yes`): only
+                      `super` gets the real control. A `normal` session sees
+                      the card exactly as inert as it was before this change —
+                      a control that writes nothing must look like it writes
+                      nothing — but now with the real reason: it is not
+                      missing, it is not theirs. */}
+                  {session.user.role === "super" ? (
+                    <CancelContractDialog
+                      contractId={contract.id}
+                      isPaidInFull={contract.paymentStatus === "paid_in_full"}
+                    />
+                  ) : (
+                    <>
+                      <Button type="button" variant="destructive" disabled>
+                        Cancelar contrato
+                      </Button>
+                      <p className="text-xs text-muted-foreground">
+                        Solo un usuario con permisos de administrador puede cancelar un
+                        contrato.
+                      </p>
+                    </>
+                  )}
+                </>
+              )}
             </CardContent>
           </Card>
         </aside>

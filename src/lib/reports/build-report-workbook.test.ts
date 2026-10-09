@@ -24,6 +24,7 @@ const ROWS: ReportRow[] = [
     total: 48500,
     collected: 18000,
     balanceDue: 30500,
+    isCancelled: false,
   },
   {
     id: "c2",
@@ -38,6 +39,9 @@ const ROWS: ReportRow[] = [
     total: 32900,
     collected: 32900,
     balanceDue: 0,
+    // A cancelled contract is STILL exported, with no marker column — the Q6
+    // indicator is on-screen only. This fixture is what makes that explicit.
+    isCancelled: true,
   },
 ];
 

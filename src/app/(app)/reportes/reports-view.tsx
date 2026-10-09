@@ -334,7 +334,26 @@ export function ReportsView({
                           {row.folio}
                         </Link>
                       </TableCell>
-                      <TableCell>{row.clientName}</TableCell>
+                      <TableCell>
+                        <span className="flex items-center gap-2">
+                          {/* Resolved Q6 — presentation only. The row is
+                              still counted in "N contratos", still summed
+                              into Cobrado/Saldo, and still exported: this
+                              badge exists so a reader can SEE which rows are
+                              inflating those figures, which was previously
+                              invisible on this screen. `danger` is the fixed
+                              tone for a cancelled contract (design-system
+                              §2, same as `StatusPill kind="contrato"`). */}
+                          <span className={row.isCancelled ? "text-muted-foreground" : undefined}>
+                            {row.clientName}
+                          </span>
+                          {row.isCancelled && (
+                            <Badge variant="danger" dot>
+                              Cancelado
+                            </Badge>
+                          )}
+                        </span>
+                      </TableCell>
                       <TableCell>{row.priceListName}</TableCell>
                       <TableCell>{row.createdByName}</TableCell>
                       <TableCell className="text-right">

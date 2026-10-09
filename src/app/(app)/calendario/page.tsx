@@ -68,6 +68,12 @@ export default async function CalendarioPage({ searchParams }: CalendarioPagePro
       eventType: true,
       eventDate: true,
       eventTime: true,
+      // Resolved Q6 — read ONLY to style the chip. The `where` above is
+      // deliberately unchanged: a cancelled contract's event still appears
+      // on the grid, still counts in the subtitle's event total and still
+      // appears in the type legend. Excluding it is a separate, deferred
+      // change.
+      contractStatus: true,
     },
   });
 
@@ -82,6 +88,7 @@ export default async function CalendarioPage({ searchParams }: CalendarioPagePro
       clientName: contract.clientName,
       eventType: contract.eventType,
       timeLabel: contract.eventTime ? timeFormatter.format(contract.eventTime) : null,
+      isCancelled: contract.contractStatus === "cancelled",
     };
     const existing = eventsByDay.get(day);
     if (existing) {

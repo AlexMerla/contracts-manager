@@ -15,7 +15,7 @@ function row(overrides: Partial<ReportRow> = {}): ReportRow {
     id: "c1", folio: "03001", clientName: "Mariana Robles", eventType: "wedding",
     eventDateIso: "2026-09-15", priceListId: "pl1", priceListName: "Bodas 2026",
     createdById: "u1", createdByName: "Gadiel H.",
-    total: 48500, collected: 18000, balanceDue: 30500,
+    total: 48500, collected: 18000, balanceDue: 30500, isCancelled: false,
     ...overrides,
   };
 }

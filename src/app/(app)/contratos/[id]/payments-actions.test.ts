@@ -224,10 +224,14 @@ describe("registerPayment / addNote", () => {
     expect(totalPaid).toBe(5000);
   });
 
-  // Spec: "Flip is gated on contractStatus being pre_contract" — a contract
-  // already cancelled or completed must still get its paymentStatus
-  // recomputed, but contractStatus must never be resurrected to "confirmed".
-  it("recomputes paymentStatus but never re-confirms a cancelled contract", async () => {
+  // SUPERSEDES the sprint-08 test "recomputes paymentStatus but never
+  // re-confirms a cancelled contract", which asserted this call SUCCEEDS.
+  // Resolved Q3 of the contract-cancellation change reversed that rule: a
+  // cancelled contract now accepts no further payments at all, so there is
+  // no paymentStatus to recompute. The `contractStatus === "pre_contract"`
+  // gate on the confirm flip still stands for `completed` contracts, which
+  // the next test covers.
+  it("rejects a payment on a cancelled contract and writes nothing", async () => {
     const contract = await createThrowawayContract({
       deposit: 1000,
       total: 5000,
@@ -242,11 +246,41 @@ describe("registerPayment / addNote", () => {
       paymentDate: "2027-01-01",
       note: "",
     });
+    expect(result).toEqual({
+      error: "El contrato está cancelado. No se pueden registrar más pagos.",
+    });
+
+    const after = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
+    expect(after.paymentStatus).toBe("pending");
+    expect(after.contractStatus).toBe("cancelled");
+
+    const payments = await prisma.payment.findMany({ where: { contractId: contract.id } });
+    expect(payments).toHaveLength(0);
+  });
+
+  // The surviving half of the superseded test: `completed` is the other
+  // non-`pre_contract` status, and it must still accept a payment while
+  // never being resurrected to "confirmed".
+  it("recomputes paymentStatus but never re-confirms a completed contract", async () => {
+    const contract = await createThrowawayContract({
+      deposit: 1000,
+      total: 5000,
+      contractStatus: "completed",
+    });
+
+    const result = await registerPayment({
+      contractId: contract.id,
+      amount: 1000,
+      method: "cash",
+      concept: "deposit",
+      paymentDate: "2027-01-01",
+      note: "",
+    });
     expect("success" in result && result.success).toBe(true);
 
     const after = await prisma.contract.findUniqueOrThrow({ where: { id: contract.id } });
     expect(after.paymentStatus).toBe("deposit_paid");
-    expect(after.contractStatus).toBe("cancelled");
+    expect(after.contractStatus).toBe("completed");
   });
 
   // Spec: overpayment is accepted (not rejected) and resolves to

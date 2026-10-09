@@ -23,6 +23,15 @@ export interface ReportRow {
   collected: number;
   /** `max(0, total − collected)`. Derived live, never a stored column. */
   balanceDue: number;
+  /**
+   * PRESENTATION ONLY (resolved Q6 of the contract-cancellation change).
+   * Nothing in `filterReportRows`, `summarizeByCreator` or
+   * `buildReportWorkbook` reads this: a cancelled contract still counts in
+   * every total and still appears in every export, exactly as before. The
+   * screen merely says so out loud. Excluding cancelled contracts from the
+   * figures is a separate, deliberately deferred change.
+   */
+  isCancelled: boolean;
 }
 
 export interface ReportFilters {

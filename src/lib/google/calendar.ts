@@ -1,4 +1,4 @@
-import type { EventType } from "@/generated/prisma/client";
+import type { ContractStatus, EventType } from "@/generated/prisma/client";
 import { EVENT_TYPE_LABEL } from "@/lib/event-type";
 import { googleApiFetch, type ContractDeliveryStepResult } from "@/lib/google/api-client";
 import { driveFileViewUrl } from "@/lib/google/drive";
@@ -57,6 +57,12 @@ export interface ContractCalendarSource {
   folio: string;
   clientName: string;
   eventType: EventType;
+  /** Drives the "[CANCELADO] " title prefix only (resolved Q4 of the
+   *  contract-cancellation change). Nothing else in the event body reads it:
+   *  a cancelled contract's event is retitled, never deleted and never
+   *  stripped of its details — the operator still needs the client's phone
+   *  number to deal with the cancellation. */
+  contractStatus: ContractStatus;
   /** Prisma `@db.Date` — always UTC midnight, so UTC getters read the stored day. */
   eventDate: Date;
   /** Prisma `@db.Time(6)` — materialised as `1970-01-01T<hh:mm>:00.000Z`. */
@@ -202,8 +208,15 @@ export function buildContractCalendarEvent(
 
   const location = [contract.placeName, contract.placeAddress].filter(Boolean).join(" - ");
 
+  // Resolved Q4 — the cancellation is announced in the TITLE, which is the
+  // only part of the event visible in a Google Calendar month view. Upper
+  // case and bracketed so it reads as a system marker rather than part of
+  // the client's name, and leading so it survives truncation in a narrow
+  // calendar cell.
+  const cancelledPrefix = contract.contractStatus === "cancelled" ? "[CANCELADO] " : "";
+
   const base = {
-    summary: `${eventTypeLabel} — ${contract.clientName} (${contract.folio})`,
+    summary: `${cancelledPrefix}${eventTypeLabel} — ${contract.clientName} (${contract.folio})`,
     description,
     ...(location ? { location } : {}),
   };
@@ -246,6 +259,7 @@ export async function upsertContractCalendarEvent(
       folio: true,
       clientName: true,
       eventType: true,
+      contractStatus: true,
       eventDate: true,
       eventTime: true,
       celebrated: true,
