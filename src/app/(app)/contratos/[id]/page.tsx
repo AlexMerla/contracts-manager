@@ -146,7 +146,7 @@ export default async function ContratoDetailPage({ params }: ContratoDetailPageP
         }
       />
 
-      <div className="mx-auto grid w-full max-w-[1280px] gap-6 px-7 py-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
+      <div className="mx-auto grid w-full max-w-[1280px] grid-cols-1 gap-6 px-7 py-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
         <Tabs defaultValue="resumen">
           <TabsList>
             <TabsTab value="resumen">Resumen</TabsTab>

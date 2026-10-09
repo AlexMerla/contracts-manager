@@ -60,9 +60,19 @@ function SignOutButton({ tooltipSide }: { tooltipSide: "top" | "right" }) {
 }
 
 export function UserChip({ user, collapsed }: UserChipProps) {
-  if (collapsed) {
-    return (
-      <div className="flex flex-col items-center gap-1 p-1.5">
+  // Below the `md` breakpoint the sidebar is CSS-forced to its collapsed
+  // (icon-only) width regardless of the `collapsed` prop (see app-shell.tsx),
+  // so both visual forms render here and responsive classes pick the one
+  // that matches the actual rendered width — same convention as
+  // sidebar-nav.tsx's own collapsed-below-md handling.
+  return (
+    <>
+      <div
+        className={cn(
+          "flex-col items-center gap-1 p-1.5",
+          collapsed ? "flex" : "flex md:hidden"
+        )}
+      >
         <Tooltip>
           <TooltipTrigger
             render={
@@ -77,17 +87,20 @@ export function UserChip({ user, collapsed }: UserChipProps) {
         </Tooltip>
         <SignOutButton tooltipSide="right" />
       </div>
-    );
-  }
 
-  return (
-    <div className={cn("flex items-center gap-2 rounded-md p-1.5")}>
-      <InitialsCircle name={user.name} />
-      <span className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-sm font-medium">{user.name}</span>
-        <span className="truncate text-xs text-muted-foreground">{roleLabel(user.role)}</span>
-      </span>
-      <SignOutButton tooltipSide="top" />
-    </div>
+      <div
+        className={cn(
+          "items-center gap-2 rounded-md p-1.5",
+          collapsed ? "hidden" : "hidden md:flex"
+        )}
+      >
+        <InitialsCircle name={user.name} />
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate text-sm font-medium">{user.name}</span>
+          <span className="truncate text-xs text-muted-foreground">{roleLabel(user.role)}</span>
+        </span>
+        <SignOutButton tooltipSide="top" />
+      </div>
+    </>
   );
 }

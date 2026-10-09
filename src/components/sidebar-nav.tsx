@@ -37,11 +37,11 @@ export function SidebarNav({ user, collapsed, onToggleCollapse }: SidebarNavProp
       <div
         className={cn(
           "flex items-center gap-2 px-2 py-2",
-          collapsed ? "justify-center" : "justify-between"
+          collapsed ? "justify-center" : "justify-center md:justify-between"
         )}
       >
         {!collapsed ? (
-          <span className="truncate font-heading text-sm font-semibold text-[var(--brand-700)] dark:text-[var(--brand-500)]">
+          <span className="hidden truncate font-heading text-sm font-semibold text-[var(--brand-700)] md:inline dark:text-[var(--brand-500)]">
             {APP_WORDMARK}
           </span>
         ) : null}
@@ -66,13 +66,19 @@ export function SidebarNav({ user, collapsed, onToggleCollapse }: SidebarNavProp
           return (
             <div key={group ?? "root"} className="flex flex-col gap-1">
               {label ? (
-                collapsed ? (
-                  <Separator className="mx-2 my-1" />
-                ) : (
-                  <span className="px-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                <>
+                  <Separator
+                    className={cn("mx-2 my-1", collapsed ? "block" : "block md:hidden")}
+                  />
+                  <span
+                    className={cn(
+                      "px-2 text-xs font-medium tracking-wide text-muted-foreground uppercase",
+                      collapsed ? "hidden" : "hidden md:block"
+                    )}
+                  >
                     {label}
                   </span>
-                )
+                </>
               ) : null}
 
               {groupItems.map((item) => {
@@ -84,14 +90,14 @@ export function SidebarNav({ user, collapsed, onToggleCollapse }: SidebarNavProp
                     aria-label={item.label}
                     className={cn(
                       "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium",
-                      collapsed && "justify-center",
+                      collapsed ? "justify-center" : "justify-center md:justify-start",
                       active
                         ? "bg-[var(--accent-50)] text-[var(--accent-700)] dark:bg-[var(--accent-500)]/15 dark:text-[var(--accent-500)]"
                         : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                     )}
                   >
                     <Icon icon={NAV_ICONS[item.icon]} />
-                    {!collapsed ? <span>{item.label}</span> : null}
+                    {!collapsed ? <span className="hidden md:inline">{item.label}</span> : null}
                   </Link>
                 );
 
