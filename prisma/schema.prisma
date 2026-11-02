@@ -261,6 +261,13 @@ model PriceList {
   id        String   @id @default(uuid()) @db.Uuid
   name      String
   isDefault Boolean  @default(false) @map("is_default")
+  // public-precontract: the ONE list the anonymous /precontrato flow prices
+  // from. Independent of `isDefault` (the internal wizard's pre-selection) so
+  // staff can expose a public-facing list without changing what the wizard
+  // opens on. Same "at most one true" application-layer invariant as
+  // `isDefault`, enforced in setPriceListPublic — but unlike `isDefault`,
+  // ZERO is a legitimate state: it means the public flow is unavailable.
+  isPublic  Boolean  @default(false) @map("is_public")
   active    Boolean  @default(true)
   createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
 

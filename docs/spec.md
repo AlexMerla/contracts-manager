@@ -27,7 +27,7 @@ Expected volume: **~2 contracts per week**. This number drives several architect
 - Multi-tenant support (this is a single-business system).
 - A job queue / message broker (Redis, BullMQ, SQS, etc.) — deliberately excluded, see §4.2.
 - Migrating data from the client's previous system — not required.
-- Client self-service portal (clients only ever access the read-only contract viewer link).
+- Client self-service portal (clients only ever access the read-only contract viewer link). **Retracted 2026-10-10 — partially**, see §12 item 7: an anonymous visitor may now assemble and submit a pre-contract through the public `/precontrato` flow (§8.1). Clients still have no account, no login, and no ability to view, edit, or cancel anything beyond the read-only viewer link (§10).
 - Native mobile app — responsive web only.
 
 ## 3. Tech stack
@@ -98,22 +98,22 @@ Never read from or write to the `google_connection` refresh token using the sess
 
 Two roles: `super` and `normal`. Enforce via a shared authorization check (e.g., a `requireRole` guard or query-scoping helper), not repeated per-route conditionals.
 
-| Module | `normal` | `super` |
-|---|---|---|
-| Contracts — list/view | Only contracts where `createdById = self` | All |
-| Contracts — create | Yes | Yes |
-| Contracts — edit | Only contracts where `createdById = self` | All |
-| Contracts — cancel | **No** | Yes |
-| Payments — create/view | Only on contracts where `createdById = self` | On any contract |
-| Notes — create/view | Only on contracts where `createdById = self` | On any contract |
-| Reports | Scoped to contracts where `createdById = self` | All contracts |
-| Calendar | Only own contracts' events | All events |
-| Catalog (categories, packages, services) | Read-only (for contract creation) | Full CRUD |
-| Price lists | Read-only (for contract creation) | Full CRUD, can set default |
-| Users | No access | Full CRUD |
-| Google Master connection | Read-only status banner | Read status + reconnect action |
+| Module | anónimo (`/precontrato`) | `normal` | `super` |
+|---|---|---|---|
+| Contracts — list/view | **No** — only the client's own `viewer_token` link (§10) | Only contracts where `createdById = self` | All |
+| Contracts — create | **Pre-contract only**, via `/precontrato` (§8.1): price list and deposit server-derived, `discount`/`extra_charge` always null, owned by the "Cliente (web)" house user | Yes | Yes |
+| Contracts — edit | **No** | Only contracts where `createdById = self` | All |
+| Contracts — cancel | **No** | **No** | Yes |
+| Payments — create/view | **No** | Only on contracts where `createdById = self` | On any contract |
+| Notes — create/view | **No** | Only on contracts where `createdById = self` | On any contract |
+| Reports | **No** | Scoped to contracts where `createdById = self` | All contracts |
+| Calendar | **No** | Only own contracts' events | All events |
+| Catalog (categories, packages, services) | **Read-only, and only the active, priced packages of the single `is_public` price list** | Read-only (for contract creation) | Full CRUD |
+| Price lists | **No** — the public list is resolved server-side, never chosen by the caller | Read-only (for contract creation) | Full CRUD, can set default **and public** |
+| Users | **No** | No access | Full CRUD |
+| Google Master connection | **No** | Read-only status banner | Read status + reconnect action |
 
-Implementation note: every query for `contracts`, `payments`, `notes` on behalf of a `normal` user must include `WHERE createdById = currentUser.id` at the data-access layer, not only hidden in the UI.
+Implementation note: every query for `contracts`, `payments`, `notes` on behalf of a `normal` user must include `WHERE createdById = currentUser.id` at the data-access layer, not only hidden in the UI. The anonymous actor has no session, so `requireRole`/`scopeToOwner` cannot express its limits: they are enforced by the *shape of its only endpoint* instead. `createPublicPreContract` accepts no amount fields, no price-list id and no owner id, and `/precontrato` is the only public write route in the system. Everything else remains unreachable without a session (`src/proxy.ts`).
 
 ## 6. Data model
 
@@ -305,20 +305,35 @@ Multi-step wizard, client-side state only until the final step — **no database
 5. **Confirm amounts.** System proposes a default deposit per the threshold rule in §6.4; user may override discount, deposit, and extra charge.
 6. **Confirm and generate.** Single action: creates the `contracts` row (folio generated here), creates `contract_packages` and `contract_service_selections` rows, then runs the sequential delivery pipeline from §4.2.
 
+### 8.1 Public pre-contract flow (anonymous)
+
+**Added 2026-10-10, change `public-precontract`.** A second, independent entry point into contract creation: an anonymous visitor, with no session, at `/precontrato` (registered in `src/proxy.ts`'s public prefixes — the only other public route besides §10's viewer).
+
+1. **Choose packages.** Store-style catalog, but scoped to the single `price_lists` row flagged `is_public` (§6.9) — `active` packages only, and only those priced in that list. No price-list picker: the client never chooses, and never supplies a `priceListId`.
+2. **Resolve service choices.** Same rule as step 3 of the internal flow (§8) — skipped if no added package has an optioned service.
+3. **Fill contract data.** Same fields as step 4 of the internal flow.
+4. **Confirm.** Amounts are **read-only**: `discount` and `extra_charge` are always `null`; `deposit` is always `calculateDefaultDeposit(total, thresholds)` (§6.4's threshold rule) — there is no human present to override it, unlike step 5 of the internal flow. A Cloudflare Turnstile check gates the submission; a missing/invalid token aborts with no side effects (fails **closed**, the opposite of §4.2's fail-open delivery steps). If the computed deposit would exceed the total, the submission is refused before any write, with a generic "contact us" message.
+
+On success: a `contracts` row is created exactly like step 6 of the internal flow (same folio sequence, same `contract_packages`/`contract_service_selections` snapshots), owned by a seeded house `User` ("Cliente (web)", `active: false` — it can never log in, per §4.3/§6.1's `authorize()` check), then the **full** §4.2 delivery pipeline runs automatically, identical to the internal flow's. The client is redirected to the §10 viewer using the new contract's `viewer_token` — never its internal `id`.
+
+A `PUBLIC_PRECONTRACT_ENABLED` environment flag (§11) gates the action independently of the route registration; the primary kill switch is removing `/precontrato` from `src/proxy.ts`'s public prefixes, which blocks both the page and its Server Action's POST.
+
 ## 9. Reports
 
 Filterable by date range, price list, creating user, client, and event type (per the original proposal). `normal` users' reports are always scoped to `createdById = self` (§5). Export to Excel via `exceljs`; PDF export is not required.
 
-## 10. Public contract viewer
+## 10. Public routes
 
-Route: `/contracts/view/[viewerToken]`, no authentication. Displays the generated contract image (and/or the underlying data) for the client to review. This is the destination of the link ManyChat sends over WhatsApp. Must not expose any other contract's data or any internal numeric ID.
+Two routes are reachable with no authentication, and only two: the contract viewer below, and the pre-contract flow (§8.1). Both are registered in `src/proxy.ts`'s `PUBLIC_PREFIXES`; anything absent from that list redirects to `/login`.
+
+**Public contract viewer.** Route: `/contracts/view/[viewerToken]`, no authentication. Displays the generated contract image (and/or the underlying data) for the client to review. This is the destination of the link ManyChat sends over WhatsApp. Must not expose any other contract's data or any internal numeric ID.
 
 ## 11. Hosting and environment
 
 - Vercel free tier for the Next.js app (frontend + API routes).
 - PostgreSQL via Neon or Supabase free tier.
 - Resend free tier for email.
-- Environment variables must include (at minimum): `DATABASE_URL`, `NEXTAUTH_SECRET`, `GOOGLE_MASTER_CLIENT_ID`/`SECRET` (Flow B, §4.3 — the only Google OAuth credentials the system needs), `RESEND_API_KEY`, `MIN_CONTRACT_ADVANCE`, `MAX_CONTRACT_ADVANCE`, `TOTAL_CONTRACT_MIN`, `TOKEN_ENCRYPTION_KEY` (for `google_connection.refresh_token_encrypted`).
+- Environment variables must include (at minimum): `DATABASE_URL`, `NEXTAUTH_SECRET`, `GOOGLE_MASTER_CLIENT_ID`/`SECRET` (Flow B, §4.3 — the only Google OAuth credentials the system needs), `RESEND_API_KEY`, `MIN_CONTRACT_ADVANCE`, `MAX_CONTRACT_ADVANCE`, `TOTAL_CONTRACT_MIN`, `TOKEN_ENCRYPTION_KEY` (for `google_connection.refresh_token_encrypted`), `TURNSTILE_SECRET_KEY`, `NEXT_PUBLIC_TURNSTILE_SITE_KEY`, `PUBLIC_PRECONTRACT_ENABLED` (§8.1 — the public pre-contract flow's Cloudflare Turnstile keys and its independent kill switch, default disabled).
 - **`DIRECT_URL`** (local/dev only, not deployed to Vercel): Supabase's direct (non-pooled, port 5432) connection string, used exclusively by `prisma.config.ts` for `prisma migrate`/`db push`/introspection. `DATABASE_URL` (Supabase's transaction pooler, port 6543) is what the running app actually connects with (see `src/lib/prisma.ts`) and is the one configured in Vercel — the pooler doesn't hold the session-level locks Prisma Migrate needs, so Migrate must always go through the direct connection instead.
 
 ## 12. Resolved decisions log
@@ -331,6 +346,7 @@ No open questions remain. The following decisions were confirmed and are reflect
 4. **Google connection banner** — visible to all roles (read-only for `normal`, reconnect action for `super`) (§5).
 5. **Cancellation reason** — free text field (§6.4).
 6. **User login has no Google sign-in** (corrected 2026-09-05, during Sprint 2 implementation) — email + password only, via the Auth.js Credentials provider. Accounts are created exclusively by a `super` user through the user management CRUD (§5, §14); there is no self-service registration. This was a drafting error in the original spec, which called for an additional Google sign-in option for users — dropped in favor of a single, `super`-controlled account-creation path. `users.password_hash` is required as a result (§6.1).
+7. **Clients may create their own pre-contract** (added 2026-10-10, change `public-precontract`) — the §2 non-goal "Client self-service portal" is retracted to the extent of exactly ONE anonymous write endpoint: the `/precontrato` flow (§8.1), where a visitor assembles a cart from the single `is_public` price list and submits it. The result is an ordinary `pre_contract` row owned by a seeded house user ("Cliente (web)"), so §5's `createdById` scoping applies unchanged and only `super` sees these contracts. Every amount is server-derived — `discount` and `extra_charge` are always null and `deposit` is always the §6.4 threshold rule — because the anonymous payload declares no amount fields at all. Cloudflare Turnstile gates the submission. No client account, no login, no self-service registration and no payment collection were added: §4.3 and item 6 above stand unchanged.
 
 ## 13. Implementation roadmap
 

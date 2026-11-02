@@ -1,8 +1,11 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { PUBLIC_PRECONTRACT_PREFIX } from "@/lib/public-precontract";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardHeader,
@@ -63,26 +66,63 @@ export default async function CatalogoPage({
     (category) => category.packages.length > 0
   );
 
+  // public-precontract: the same page that already previews the staff
+  // catalog also hosts the public preview entry point — a super-only link
+  // that opens the REAL `/precontrato` route in a new tab (deliberately NOT
+  // an embedded/iframed re-render, per the design's own rejection of both
+  // alternatives: an iframe would double-load Turnstile's script in one
+  // document, and a separate rendered preview is a second implementation
+  // free to drift from what an actual client sees).
+  const publicPriceList = priceLists.find((pl) => pl.isPublic) ?? null;
+  const isSuper = session.user.role === "super";
+
   return (
     <>
       <PageHeader
         title="Catálogo"
         subtitle="Consulte los paquetes disponibles, sus servicios incluidos y su precio según la lista seleccionada."
         actions={
-          selectedPriceList &&
-          priceLists.length > 0 && (
-            <PriceListSwitcher
-              priceLists={priceLists.map((pl) => ({
-                id: pl.id,
-                name: pl.name,
-                isDefault: pl.isDefault,
-              }))}
-              selectedId={selectedPriceList.id}
-            />
-          )
+          <div className="flex items-center gap-2">
+            {selectedPriceList && priceLists.length > 0 && (
+              <PriceListSwitcher
+                priceLists={priceLists.map((pl) => ({
+                  id: pl.id,
+                  name: pl.name,
+                  isDefault: pl.isDefault,
+                }))}
+                selectedId={selectedPriceList.id}
+              />
+            )}
+            {isSuper && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!publicPriceList}
+                render={
+                  publicPriceList ? (
+                    <Link href={PUBLIC_PRECONTRACT_PREFIX} target="_blank" rel="noopener noreferrer" />
+                  ) : undefined
+                }
+              >
+                Ver como cliente
+              </Button>
+            )}
+          </div>
         }
       />
       <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-6 px-7 py-6">
+        {isSuper && (
+          <p className="text-sm text-muted-foreground">
+            {publicPriceList ? (
+              <>
+                Lista pública configurada: <span className="font-medium text-foreground">{publicPriceList.name}</span>.
+              </>
+            ) : (
+              "Ninguna lista está marcada como pública — el flujo público no está disponible. Márquela en Listas de precios."
+            )}
+          </p>
+        )}
+
         {!selectedPriceList && (
           <p className="text-sm text-muted-foreground">
             Ninguna lista de precios activa todavía.

@@ -69,6 +69,9 @@ export default async function ListasPreciosPage({
     name: priceList.name,
     contractCount: priceList._count.contracts,
     isDefault: priceList.isDefault,
+    // public-precontract Q6 — surfaced alongside `isDefault` so the "which
+    // list means what" toggles live together in the UI too.
+    isPublic: priceList.isPublic,
     active: priceList.active,
   }));
 

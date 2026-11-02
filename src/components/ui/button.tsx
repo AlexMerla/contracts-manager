@@ -18,6 +18,11 @@ const buttonVariants = cva(
         destructive:
           "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
         link: "text-primary underline-offset-4 hover:underline",
+        // docs/design-system.md §1.1 + §2: magenta, reserved for the
+        // wordmark/marketing/login surfaces — never status or data. First
+        // used by the public pre-contract flow's hero section
+        // (src/app/precontrato/page.tsx).
+        brand: "bg-brand text-brand-foreground hover:bg-[var(--brand-600)]",
       },
       size: {
         default:

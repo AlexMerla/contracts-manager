@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 
 import { auth } from "@/lib/auth";
 import { scopeToOwner } from "@/lib/authorization";
+import { HOUSE_USER_EMAIL } from "@/lib/contracts/house-user";
+import { prisma } from "@/lib/prisma";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/page-header";
 
@@ -46,6 +48,16 @@ export default async function ContratosPage({ searchParams }: ContratosPageProps
     },
   });
 
+  // public-precontract: looked up by id, not name — a `super` renaming the
+  // house user in /usuarios must not silently break this marker. A direct,
+  // non-throwing query (not `getHouseUserId()`) so a missing house-user row
+  // degrades to "no contract is client-created" instead of 500ing the whole
+  // list.
+  const houseUser = await prisma.user.findUnique({
+    where: { email: HOUSE_USER_EMAIL },
+    select: { id: true },
+  });
+
   // Decimal is not serializable across the RSC boundary -> Number().
   // eventDate is formatted here, not on the client, so the server's ICU is
   // the only one that ever runs (no hydration locale mismatch).
@@ -61,6 +73,7 @@ export default async function ContratosPage({ searchParams }: ContratosPageProps
     priceListId: contract.priceListId,
     priceListName: contract.priceList.name,
     createdByName: contract.createdBy.name,
+    createdByHouseUser: houseUser != null && contract.createdById === houseUser.id,
     // Spec §4.2 point 4. Already selected by the unqualified `findMany` above
     // — these are plain scalar columns on `contracts`, no join, no migration.
     imageGenerated: contract.imageGenerated,

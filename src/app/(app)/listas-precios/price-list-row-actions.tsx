@@ -34,6 +34,7 @@ import {
   deletePriceList,
   setPriceListActive,
   setPriceListDefault,
+  setPriceListPublic,
   updatePriceList,
 } from "./actions";
 
@@ -49,6 +50,7 @@ interface PriceListRowActionsProps {
     id: string;
     name: string;
     isDefault: boolean;
+    isPublic: boolean;
     active: boolean;
   };
   onDuplicate?: () => void;
@@ -134,6 +136,21 @@ export function PriceListRowActions({
             }
           >
             {priceList.active ? "Desactivar" : "Activar"}
+          </DropdownMenuItem>
+          {/* public-precontract Q6 — "Publicar" disabled on an inactive
+              list so its own server-side refusal (an inactive list can
+              never match the public page's `isPublic && active` query) is
+              never actually reachable through this menu; "Quitar de
+              público" has no such precondition. */}
+          <DropdownMenuItem
+            disabled={isPending || (!priceList.isPublic && !priceList.active)}
+            onClick={() =>
+              startTransition(async () => {
+                await setPriceListPublic(priceList.id, !priceList.isPublic);
+              })
+            }
+          >
+            {priceList.isPublic ? "Quitar de público" : "Publicar"}
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => setEditOpen(true)}>
             Editar

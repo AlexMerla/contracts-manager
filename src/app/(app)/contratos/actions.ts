@@ -6,11 +6,8 @@ import { revalidatePath } from "next/cache";
 
 import { auth } from "@/lib/auth";
 import { requireRole, scopeToOwner } from "@/lib/authorization";
-import {
-  generateContractImages,
-  type ContractImagePair,
-} from "@/lib/contract-template/generate-contract-image";
 import { getContractImageBuffers } from "@/lib/contract-template/get-contract-image-buffer";
+import { runContractDeliveryPipeline } from "@/lib/contracts/delivery-pipeline";
 import type { ContractDeliveryStepResult } from "@/lib/contracts/delivery-step";
 import { nextFolio } from "@/lib/contracts/folio";
 import { sendContractEmail } from "@/lib/email/contract-email";
@@ -222,15 +219,15 @@ export async function createContract(
         return created;
       });
 
-      // Sprint 5 task 6 / spec §4.2: image generation runs AFTER the
-      // transaction has committed, as a separate best-effort step — never
-      // inside prisma.$transaction. If it throws, contract creation must
-      // still succeed; `imageGenerated` stays `false` for the manual retry
-      // action (task 7 / `regenerateContractImage` below) rather than
-      // rolling back or blocking the response.
-      let contractImages: ContractImagePair | null = null;
-      try {
-        contractImages = await generateContractImages({
+      // Spec §4.2's full sequential pipeline (image → Drive → Calendar →
+      // email → WhatsApp), extracted to `@/lib/contracts/delivery-pipeline`
+      // so the public pre-contract action runs the IDENTICAL sequence rather
+      // than a second copy that can drift. Behavior here is unchanged: the
+      // image data assembled in this request is handed over, so this path
+      // still renders without a second read of the row it just wrote.
+      await runContractDeliveryPipeline({
+        contractId: contract.id,
+        imageData: {
           folio: contract.folio,
           eventDate: contract.eventDate,
           eventTime: contract.eventTime,
@@ -251,89 +248,8 @@ export async function createContract(
           total,
           deposit: data.deposit,
           balance,
-        });
-        await prisma.contract.update({
-          where: { id: contract.id },
-          data: { imageGenerated: true },
-        });
-      } catch (error: unknown) {
-        console.error(`Failed to generate image for contract ${contract.id}:`, error);
-      }
-
-      // Sprint 6 task 8 / spec §4.2 step 2: the rest of the sequential
-      // delivery pipeline, still in this same request, still after the
-      // transaction. Each step gets its OWN try/catch so a Drive outage can't
-      // stop Calendar from being attempted (and vice versa), and neither can
-      // stop this action from returning success — the contract row already
-      // exists. Whatever failed stays `false` in its status column and is
-      // reported on the detail page (the wizard redirects there on success)
-      // as its own retry button, per §4.2 steps 4-5.
-      //
-      // Both step functions already convert Google/API failures into a result
-      // object rather than throwing; the try/catch is for the everything-else
-      // case (a Prisma write failing, say), so this stays true by construction
-      // and not just by their current implementation.
-      try {
-        // Passes the pair just produced instead of re-rendering both images —
-        // this is the first consumer of `generateContractImages`'s return
-        // value. `null` (generation failed) means Drive regenerates the pair
-        // itself and reports its own failure if that also fails.
-        const drive = await uploadContractImageToDrive(contract.id, contractImages ?? undefined);
-        if (!drive.ok) {
-          console.error(`Drive upload failed for contract ${contract.id}: ${drive.message}`);
-        }
-      } catch (error: unknown) {
-        console.error(`Drive upload threw for contract ${contract.id}:`, error);
-      }
-
-      // Order is now load-bearing, not just incidental: Calendar's 📎 link
-      // reads the OFFICIAL contract's `driveFileId`, which only exists once
-      // the Drive step above has run — Drive must stay before Calendar.
-      try {
-        const calendar = await upsertContractCalendarEvent(contract.id);
-        if (!calendar.ok) {
-          console.error(
-            `Calendar event failed for contract ${contract.id}: ${calendar.message}`
-          );
-        }
-      } catch (error: unknown) {
-        console.error(`Calendar event threw for contract ${contract.id}:`, error);
-      }
-
-      // Sprint 7 task 6 — the last two steps of §4.2's sequence. Same
-      // independent try/catch shape as Drive and Calendar above: a Resend
-      // outage must not stop the ManyChat trigger, and neither may stop this
-      // action from returning success.
-      //
-      // Email before WhatsApp, per §4.2 step 2's stated order. The ordering
-      // is not load-bearing the way Drive→Calendar is (neither step reads the
-      // other's output — both build the same public link from `viewerToken`),
-      // but WhatsApp goes last deliberately: it is the only step with no
-      // status column, so if the request dies partway, everything still
-      // retriable has already been attempted.
-      try {
-        const email = await sendContractEmail(contract.id);
-        if (!email.ok) {
-          console.error(`Email delivery failed for contract ${contract.id}: ${email.message}`);
-        }
-      } catch (error: unknown) {
-        console.error(`Email delivery threw for contract ${contract.id}:`, error);
-      }
-
-      // No `whatsappTriggered` column exists (spec §6.4 defines none, and
-      // that was re-confirmed as a product decision for this sprint), so a
-      // failure here is only logged — the copyable public link on the
-      // contract detail page (task 5) is the intended manual fallback.
-      try {
-        const whatsapp = await triggerContractWhatsApp(contract.id);
-        if (!whatsapp.ok) {
-          console.error(
-            `WhatsApp trigger failed for contract ${contract.id}: ${whatsapp.message}`
-          );
-        }
-      } catch (error: unknown) {
-        console.error(`WhatsApp trigger threw for contract ${contract.id}:`, error);
-      }
+        },
+      });
 
       return { success: true, contractId: contract.id, folio: contract.folio };
     } catch (error: unknown) {

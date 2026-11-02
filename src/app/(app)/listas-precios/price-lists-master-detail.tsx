@@ -33,6 +33,9 @@ export interface PriceListSummary {
   name: string;
   contractCount: number;
   isDefault: boolean;
+  /** public-precontract Q6 — the single list the anonymous /precontrato
+   * flow prices from, independent of `isDefault`. */
+  isPublic: boolean;
   active: boolean;
 }
 
@@ -121,9 +124,14 @@ export function PriceListsMasterDetail({
                     <CardHeader className="flex flex-col gap-2">
                       <div className="flex items-center justify-between gap-2">
                         <CardTitle>{priceList.name}</CardTitle>
-                        {priceList.isDefault && (
-                          <Badge variant="info">Predeterminada</Badge>
-                        )}
+                        <div className="flex shrink-0 gap-1.5">
+                          {priceList.isDefault && (
+                            <Badge variant="info">Predeterminada</Badge>
+                          )}
+                          {priceList.isPublic && (
+                            <Badge variant="success">Pública</Badge>
+                          )}
+                        </div>
                       </div>
                       <p className="text-sm text-muted-foreground">
                         {priceList.contractCount} contratos
@@ -161,6 +169,7 @@ export function PriceListsMasterDetail({
                   id: selected.id,
                   name: selected.name,
                   isDefault: selected.isDefault,
+                  isPublic: selected.isPublic,
                   active: selected.active,
                 }}
                 onDuplicate={() => onDuplicate(selected.id)}

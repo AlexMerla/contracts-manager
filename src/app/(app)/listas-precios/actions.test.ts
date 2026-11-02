@@ -19,7 +19,7 @@ vi.mock("next/cache", () => ({
 }));
 
 import { prisma } from "@/lib/prisma";
-import { duplicatePriceList } from "@/app/(app)/listas-precios/actions";
+import { duplicatePriceList, setPriceListPublic } from "@/app/(app)/listas-precios/actions";
 
 const superUserId = randomUUID();
 const categoryId = randomUUID();
@@ -172,5 +172,81 @@ describe("duplicatePriceList", () => {
 
     await expect(duplicatePriceList(sourceListId)).rejects.toThrow();
     expect(await prisma.priceList.count()).toBe(listsBefore);
+  });
+});
+
+// public-precontract Q6 — own fixtures, deliberately NOT sharing
+// `sourceListId` with the `duplicatePriceList` suite above: toggling
+// `isPublic` globally (same "exactly one" sweep shape as `isDefault`) would
+// otherwise race the same way the fixture note above describes for
+// `isDefault`.
+describe("setPriceListPublic", () => {
+  const activeListId = randomUUID();
+  const otherActiveListId = randomUUID();
+  const inactiveListId = randomUUID();
+
+  beforeAll(async () => {
+    mockAuth.mockResolvedValue(superSession);
+
+    await prisma.priceList.createMany({
+      data: [
+        { id: activeListId, name: "Lista activa (public test)", active: true },
+        { id: otherActiveListId, name: "Lista activa 2 (public test)", active: true },
+        { id: inactiveListId, name: "Lista inactiva (public test)", active: false },
+      ],
+    });
+  });
+
+  afterAll(async () => {
+    await prisma.priceList.deleteMany({
+      where: { id: { in: [activeListId, otherActiveListId, inactiveListId] } },
+    });
+  });
+
+  it("refuses to publish an inactive price list", async () => {
+    const result = await setPriceListPublic(inactiveListId, true);
+    expect("error" in result).toBe(true);
+    expect((result as { error: string }).error).toMatch(/desactivada/);
+
+    const list = await prisma.priceList.findUniqueOrThrow({ where: { id: inactiveListId } });
+    expect(list.isPublic).toBe(false);
+  });
+
+  it("publishing one active list clears any previously-public list (exactly one, or zero)", async () => {
+    const first = await setPriceListPublic(activeListId, true);
+    expect("success" in first).toBe(true);
+
+    const second = await setPriceListPublic(otherActiveListId, true);
+    expect("success" in second).toBe(true);
+
+    const [a, b] = await Promise.all([
+      prisma.priceList.findUniqueOrThrow({ where: { id: activeListId } }),
+      prisma.priceList.findUniqueOrThrow({ where: { id: otherActiveListId } }),
+    ]);
+    expect(a.isPublic).toBe(false);
+    expect(b.isPublic).toBe(true);
+  });
+
+  it("un-publishing leaves zero public lists — a legitimate state, unlike isDefault", async () => {
+    await setPriceListPublic(otherActiveListId, true);
+    const result = await setPriceListPublic(otherActiveListId, false);
+    expect("success" in result).toBe(true);
+
+    const list = await prisma.priceList.findUniqueOrThrow({ where: { id: otherActiveListId } });
+    expect(list.isPublic).toBe(false);
+  });
+
+  it("deactivating a public list also clears isPublic", async () => {
+    await setPriceListPublic(activeListId, true);
+
+    const { setPriceListActive } = await import("@/app/(app)/listas-precios/actions");
+    await setPriceListActive(activeListId, false);
+
+    const list = await prisma.priceList.findUniqueOrThrow({ where: { id: activeListId } });
+    expect(list.active).toBe(false);
+    expect(list.isPublic).toBe(false);
+
+    // Restore for test isolation within this describe block.
+    await prisma.priceList.update({ where: { id: activeListId }, data: { active: true } });
   });
 });

@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { FileSearch } from "lucide-react";
 
 import type { ContractStatus, EventType, PaymentStatus } from "@/generated/prisma/client";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -46,6 +47,11 @@ export interface ContractRow {
   priceListId: string;
   priceListName: string;
   createdByName: string;
+  /** public-precontract — true when this is a client-submitted pre-contract
+   * (owned by the seeded "Cliente (web)" house user), compared by id rather
+   * than by `createdByName` so renaming that user in /usuarios can never
+   * silently drop the marker. */
+  createdByHouseUser: boolean;
   // Spec §4.2 point 4 — the four post-confirmation pipeline flags, surfaced
   // in the list so an incomplete step is visible without opening the contract.
   imageGenerated: boolean;
@@ -374,7 +380,16 @@ export function ContractsListView({
                       tone={contract.balance > 0 ? "negative" : "muted"}
                     />
                   </TableCell>
-                  {showCreatedBy && <TableCell>{contract.createdByName}</TableCell>}
+                  {showCreatedBy && (
+                    <TableCell>
+                      <span className="flex items-center gap-1.5">
+                        {contract.createdByName}
+                        {contract.createdByHouseUser && (
+                          <Badge variant="info">Creado por cliente</Badge>
+                        )}
+                      </span>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>

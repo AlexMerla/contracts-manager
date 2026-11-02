@@ -74,9 +74,70 @@ export async function setPriceListActive(
 ): Promise<ActionResult> {
   await requireSuperSession();
 
-  await prisma.priceList.update({ where: { id }, data: { active } });
+  // Deactivating also clears `isPublic`: an inactive list no longer matches
+  // the public page's `isPublic && active` query (public-precontract), so
+  // leaving the flag set would show "pública" here while the public flow is
+  // in fact unavailable — the kind of silent disagreement
+  // `setPriceListPublic`'s own active-check guards against in the other
+  // direction.
+  await prisma.priceList.update({
+    where: { id },
+    data: active ? { active: true } : { active: false, isPublic: false },
+  });
 
   revalidatePath("/listas-precios");
+  revalidatePath("/catalogo");
+  return { success: true };
+}
+
+// public-precontract Q6 — the public-facing list, next to
+// `setPriceListDefault` because this is where "which list means what"
+// already lives.
+//
+// Same transactional exactly-one enforcement as `setPriceListDefault`, with
+// ONE deliberate difference: this flag is a TOGGLE, because zero public
+// lists is a legitimate state (it is how a `super` user turns the public
+// flow off without a deploy) whereas zero default lists is not. `isDefault`
+// and `isPublic` stay independent columns: changing which list the internal
+// wizard opens on must never silently change what anonymous visitors are
+// quoted.
+export async function setPriceListPublic(
+  id: string,
+  isPublic: boolean
+): Promise<ActionResult> {
+  await requireSuperSession();
+
+  if (!isPublic) {
+    await prisma.priceList.update({ where: { id }, data: { isPublic: false } });
+    revalidatePath("/listas-precios");
+    revalidatePath("/catalogo");
+    return { success: true };
+  }
+
+  const priceList = await prisma.priceList.findUnique({ where: { id } });
+  if (!priceList) {
+    return { error: "La lista de precios ya no existe." };
+  }
+  // An inactive list is invisible to the public page's own query
+  // (`isPublic && active`), so flagging one would silently take the public
+  // flow offline. Refuse with the reason instead.
+  if (!priceList.active) {
+    return {
+      error:
+        "No se puede publicar: esta lista está desactivada. Actívela antes de marcarla como pública.",
+    };
+  }
+
+  await prisma.$transaction([
+    prisma.priceList.updateMany({
+      where: { isPublic: true, NOT: { id } },
+      data: { isPublic: false },
+    }),
+    prisma.priceList.update({ where: { id }, data: { isPublic: true } }),
+  ]);
+
+  revalidatePath("/listas-precios");
+  revalidatePath("/catalogo");
   return { success: true };
 }
 
@@ -149,10 +210,12 @@ export async function duplicatePriceList(
   }
 
   const copy = await prisma.$transaction(async (tx) => {
-    // `isDefault` is NEVER copied: spec §6.9 requires exactly one default
-    // list, and a duplicate must never silently become a second one.
+    // Neither `isDefault` nor `isPublic` is ever copied: spec §6.9 requires
+    // exactly one default list, and a duplicate must never silently become
+    // a second one — nor must it silently become a second publicly-quoted
+    // list (public-precontract).
     const created = await tx.priceList.create({
-      data: { name, isDefault: false, active: source.active },
+      data: { name, isDefault: false, isPublic: false, active: source.active },
     });
 
     if (source.packagePrices.length > 0) {
