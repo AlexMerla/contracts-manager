@@ -1,4 +1,5 @@
 import { contractViewerUrl } from "@/lib/app-url";
+import { clientFacingImage } from "@/lib/contract-template/client-facing-variant";
 import {
   stepErrorMessage,
   type ContractDeliveryStepResult,
@@ -287,10 +288,23 @@ export async function triggerContractWhatsApp(
 ): Promise<ContractDeliveryStepResult> {
   const contract = await prisma.contract.findUnique({
     where: { id: contractId },
-    select: { folio: true, clientName: true, clientMobile: true, viewerToken: true },
+    select: {
+      folio: true,
+      clientName: true,
+      clientMobile: true,
+      viewerToken: true,
+      contractStatus: true,
+    },
   });
   if (!contract) {
     return { ok: false, message: "Contrato no encontrado." };
+  }
+  // The message's only payload is the viewer link, and a contract with no
+  // client-facing image (cancelled) has a viewer that 404s (spec §10) —
+  // sending it would hand the client a dead link. Same rule, same wording,
+  // as `sendContractEmail`.
+  if (!clientFacingImage(contract.contractStatus)) {
+    return { ok: false, message: "El contrato está cancelado; no se envía al cliente." };
   }
   if (!contract.clientMobile) {
     return {

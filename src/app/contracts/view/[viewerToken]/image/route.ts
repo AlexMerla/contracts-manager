@@ -1,3 +1,7 @@
+import {
+  clientFacingImage,
+  clientFacingImageFileName,
+} from "@/lib/contract-template/client-facing-variant";
 import { getContractImageBuffer } from "@/lib/contract-template/get-contract-image-buffer";
 import { prisma } from "@/lib/prisma";
 
@@ -14,9 +18,13 @@ import { prisma } from "@/lib/prisma";
 //  * it keeps a clean 404 for an unknown token, instead of the page having to
 //    decide what to render for "token valid, rendering failed".
 //
-// Lookup is by `viewerToken` only, never by the internal `id` (spec §10), and
-// only the OFFICIAL `"contract"` variant is ever served — the pre-contract
-// render exists for the business's Drive archive, not for the client.
+// Lookup is by `viewerToken` only, never by the internal `id` (spec §10). The
+// variant follows the contract's CURRENT status (`clientFacingImage`, spec
+// §7): the pre-contract while `pre_contract`, the official contract once
+// confirmed or completed, and a 404 for a cancelled contract — same as the
+// viewer page, so the image can't be fetched by token once cancelled. The
+// `?v=` query string the page appends is ignored here on purpose: the status
+// on the row is the only input, never something the URL claims.
 
 export const dynamic = "force-dynamic";
 
@@ -28,12 +36,14 @@ export async function GET(
 
   const contract = await prisma.contract.findUnique({
     where: { viewerToken },
-    select: { id: true, folio: true },
+    select: { id: true, folio: true, contractStatus: true },
   });
+  const clientImage = contract ? clientFacingImage(contract.contractStatus) : null;
 
   // Byte-identical to any other miss: an unknown token must not be
-  // distinguishable from a known one that happens to be missing.
-  if (!contract) {
+  // distinguishable from a known one that happens to be missing, nor from a
+  // cancelled one.
+  if (!contract || !clientImage) {
     return new Response("No encontrado", {
       status: 404,
       headers: { "Content-Type": "text/plain; charset=utf-8", "X-Robots-Tag": "noindex" },
@@ -42,7 +52,7 @@ export async function GET(
 
   let image: Buffer;
   try {
-    image = await getContractImageBuffer(contract.id, "contract");
+    image = await getContractImageBuffer(contract.id, clientImage.variant);
   } catch (error: unknown) {
     console.error(`Failed to render the public image for contract ${contract.id}:`, error);
     return new Response("No se pudo generar la imagen del contrato.", {
@@ -55,12 +65,15 @@ export async function GET(
     headers: {
       "Content-Type": "image/jpeg",
       "Content-Length": String(image.byteLength),
-      "Content-Disposition": `inline; filename="Contrato${contract.folio}.jpg"`,
+      "Content-Disposition": `inline; filename="${clientFacingImageFileName(clientImage, contract.folio)}"`,
       // `private`, not `public`: the URL's unguessable token is the only thing
       // protecting this, so it must never land in a shared CDN or proxy cache.
       // Five minutes is enough to cover a reload or a second device opening the
       // same link, and short enough that an edit plus a regeneration shows up
-      // promptly — the image is derived data, re-rendered on every miss.
+      // promptly — the image is derived data, re-rendered on every miss. A
+      // STATUS change does not wait out these five minutes: the viewer page
+      // requests `?v=<variant>` (`contractViewerImagePath`), so confirming a
+      // contract changes the URL and the browser has no cached copy of it.
       "Cache-Control": "private, max-age=300",
       "X-Robots-Tag": "noindex, noimageindex",
     },

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   appBaseUrl,
+  contractViewerImagePath,
   contractViewerPath,
   contractViewerUrl,
   tryContractViewerUrl,
@@ -67,5 +68,16 @@ describe("contractViewerPath / contractViewerUrl", () => {
     expect(tryContractViewerUrl("tok")).toBeNull();
     setBaseUrl("https://contratos.ejemplo.com");
     expect(tryContractViewerUrl("tok")).toBe("https://contratos.ejemplo.com/contracts/view/tok");
+  });
+});
+
+describe("contractViewerImagePath", () => {
+  it("versions the image route by the variant being shown", () => {
+    expect(contractViewerImagePath("abc-123", "pre-contract")).toBe(
+      "/contracts/view/abc-123/image?v=pre-contract"
+    );
+    expect(contractViewerImagePath("abc-123", "contract")).toBe(
+      "/contracts/view/abc-123/image?v=contract"
+    );
   });
 });

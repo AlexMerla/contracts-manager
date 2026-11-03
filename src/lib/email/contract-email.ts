@@ -1,5 +1,9 @@
 import { Resend } from "resend";
 
+import {
+  clientFacingImage,
+  clientFacingImageFileName,
+} from "@/lib/contract-template/client-facing-variant";
 import { getContractImageBuffer } from "@/lib/contract-template/get-contract-image-buffer";
 import {
   stepErrorMessage,
@@ -63,16 +67,20 @@ function resendClient(): Resend {
 
 /**
  * Sends the fixed-content "precontract-confirmation" Resend Template to
- * `clientEmail` with the OFFICIAL contract JPEG attached, then sets
+ * `clientEmail` with the client-facing JPEG for the contract's CURRENT
+ * status attached (`clientFacingImage`, spec §7), then sets
  * `contracts.emailSent`. Never throws for a configuration or API failure
  * (spec §4.2) — the confirm pipeline and the retry action both read the
  * returned result instead.
  *
  * The public viewer link is intentionally NOT included here — ManyChat
  * already sends it over WhatsApp (spec §3), and ops can always copy it from
- * the contract detail page (sprint-07 task 5). Only the `"contract"` variant
- * is ever attached — the pre-contract render exists for the business's own
- * Drive archive, never for the client.
+ * the contract detail page (sprint-07 task 5). The attachment follows the
+ * status at SEND time: `Precontrato<folio>.jpg` while `pre_contract`,
+ * `Contrato<folio>.jpg` once confirmed or completed — so a "Reenviar" after
+ * the deposit sends the official contract with no extra step. A cancelled
+ * contract is refused outright: it has no client-facing image (the viewer
+ * 404s too), and nothing is sent automatically on any status change.
  *
  * No idempotency guard on `emailSent` (deliberately removed — see the open
  * question this answers): this is called automatically exactly ONCE, from
@@ -93,10 +101,18 @@ export async function sendContractEmail(
       folio: true,
       clientName: true,
       clientEmail: true,
+      contractStatus: true,
     },
   });
   if (!contract) {
     return { ok: false, message: "Contrato no encontrado." };
+  }
+
+  // Checked before any configuration or Resend work, so a refused send never
+  // constructs a client.
+  const clientImage = clientFacingImage(contract.contractStatus);
+  if (!clientImage) {
+    return { ok: false, message: "El contrato está cancelado; no se envía al cliente." };
   }
 
   if (!contract.clientEmail) {
@@ -115,7 +131,7 @@ export async function sendContractEmail(
 
   let image: Buffer;
   try {
-    image = await getContractImageBuffer(contractId, "contract");
+    image = await getContractImageBuffer(contractId, clientImage.variant);
   } catch (error: unknown) {
     return {
       ok: false,
@@ -135,7 +151,7 @@ export async function sendContractEmail(
       attachments: [
         {
           // Same naming convention as the Drive copy (`contractDriveFileName`).
-          filename: `Contrato${contract.folio}.jpg`,
+          filename: clientFacingImageFileName(clientImage, contract.folio),
           content: image,
           contentType: "image/jpeg",
         },

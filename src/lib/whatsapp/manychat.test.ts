@@ -1,8 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { randomUUID } from "node:crypto";
 
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { prisma } from "@/lib/prisma";
 import {
   normalizeMexicanMobile,
   sendContractWhatsAppMessage,
+  triggerContractWhatsApp,
 } from "@/lib/whatsapp/manychat";
 
 // SAFETY: `vitest.config.mts` loads the real `.env` through `dotenv/config`,
@@ -181,6 +185,64 @@ describe("sendContractWhatsAppMessage", () => {
   it("rejects an unusable phone number before any network call", async () => {
     const result = await sendContractWhatsAppMessage({ ...message, phone: "123" });
     expect(result.ok).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("triggerContractWhatsApp (cancelled guard, real DB, fetch stubbed)", () => {
+  const userId = randomUUID();
+  const priceListId = randomUUID();
+  const contractId = randomUUID();
+
+  beforeAll(async () => {
+    await prisma.user.create({
+      data: {
+        id: userId,
+        name: "Throwaway (manychat cancelled test)",
+        email: `throwaway-${userId}@example.com`,
+        passwordHash: "unused-in-this-test",
+        role: "normal",
+      },
+    });
+    await prisma.priceList.create({
+      data: { id: priceListId, name: "Throwaway (manychat cancelled test)" },
+    });
+    await prisma.contract.create({
+      data: {
+        id: contractId,
+        // `CT-TEST-` (the legacy prefix `nextFolio` skips): a free-form folio
+        // sorts after the digits and turns a concurrent createContract's
+        // next folio into "00NaN".
+        folio: `CT-TEST-${contractId.slice(0, 8)}`,
+        clientName: "Cliente cancelado",
+        clientMobile: "8112345678",
+        contractStatus: "cancelled",
+        cancellationReason: "Prueba",
+        eventType: "other",
+        eventDate: new Date("2027-01-01T00:00:00.000Z"),
+        subtotal: 0,
+        total: 0,
+        deposit: 0,
+        balance: 0,
+        viewerToken: randomUUID(),
+        priceListId,
+        createdById: userId,
+      },
+    });
+  });
+
+  afterAll(async () => {
+    await prisma.contract.delete({ where: { id: contractId } });
+    await prisma.priceList.delete({ where: { id: priceListId } });
+    await prisma.user.delete({ where: { id: userId } });
+  });
+
+  it("refuses before any ManyChat call", async () => {
+    const result = await triggerContractWhatsApp(contractId);
+    expect(result).toEqual({
+      ok: false,
+      message: "El contrato está cancelado; no se envía al cliente.",
+    });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

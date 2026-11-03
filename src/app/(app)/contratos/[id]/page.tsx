@@ -12,7 +12,8 @@ import {
 
 import { auth } from "@/lib/auth";
 import { scopeToOwner } from "@/lib/authorization";
-import { contractViewerPath, tryContractViewerUrl } from "@/lib/app-url";
+import { contractViewerImagePath, tryContractViewerUrl } from "@/lib/app-url";
+import { clientFacingImage } from "@/lib/contract-template/client-facing-variant";
 import { EVENT_TYPE_LABEL } from "@/lib/event-type";
 import { driveFileViewUrl } from "@/lib/google/drive";
 import { Alert } from "@/components/ui/alert";
@@ -104,6 +105,9 @@ export default async function ContratoDetailPage({ params }: ContratoDetailPageP
   // a cancelled contract server-side (resolved Q3), so leaving the dialog
   // reachable would only offer a form that cannot succeed.
   const isCancelled = contract.contractStatus === "cancelled";
+  // Spec §7: what the client is shown right now (`null` once cancelled) — the
+  // "Ver" link below opens exactly that, through the public image route.
+  const clientImage = clientFacingImage(contract.contractStatus);
 
   // Sprint 8 task 2 / spec "Live Balance Derivation": `contracts.total` is a
   // creation-time snapshot (never rewritten); the amount actually collected
@@ -143,11 +147,16 @@ export default async function ContratoDetailPage({ params }: ContratoDetailPageP
             {/* Client-facing redelivery only. Drive/Calendar/image retries
                 are NOT folded in here — they repair internal artefacts and
                 sit on their own row in "Documento y respaldos". */}
-            <ResendMenu
-              contractId={contract.id}
-              hasEmail={Boolean(contract.clientEmail)}
-              hasMobile={Boolean(contract.clientMobile)}
-            />
+            {/* Hidden once cancelled: both channels refuse a cancelled
+                contract server-side (spec §7 — no client-facing image), so
+                the menu could only offer sends that fail. */}
+            {!isCancelled && (
+              <ResendMenu
+                contractId={contract.id}
+                hasEmail={Boolean(contract.clientEmail)}
+                hasMobile={Boolean(contract.clientMobile)}
+              />
+            )}
             {!isCancelled && (
               <RegisterPaymentDialog
                 contractId={contract.id}
@@ -386,15 +395,19 @@ export default async function ContratoDetailPage({ params }: ContratoDetailPageP
                 icon={FileImage}
                 label="Contrato generado (imagen)"
                 action={
-                  contract.imageGenerated ? (
-                    <ExternalAction
-                      href={`${contractViewerPath(contract.viewerToken)}/image`}
-                      label="Ver"
-                    />
-                  ) : (
+                  !contract.imageGenerated ? (
                     <PendingAction>
                       <RetryImageButton contractId={contract.id} label="Reintentar" />
                     </PendingAction>
+                  ) : clientImage ? (
+                    <ExternalAction
+                      href={contractViewerImagePath(contract.viewerToken, clientImage.variant)}
+                      label="Ver"
+                    />
+                  ) : (
+                    // Cancelled: the public image route 404s, so there is
+                    // nothing to open — the Drive row still links both files.
+                    <span className="text-sm text-muted-foreground">No disponible</span>
                   )
                 }
               />

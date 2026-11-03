@@ -79,6 +79,8 @@ When a contract is confirmed (last step of the creation flow, §8):
 4. If a step throws, the response still returns success for contract creation (the contract row exists), but reports which step failed. The contract list UI must show a visual indicator for any contract with an incomplete step.
 5. Each status column has a **manual retry** action in the UI (e.g., a "retry Drive upload" button on the contract detail page) that re-runs only that step, idempotently. Retrying must not create duplicate Drive files, duplicate Calendar events, or duplicate emails — check the relevant ID/status column before acting.
 
+Status changes never trigger delivery. Registering the deposit (pre_contract → confirmed) or any later status change does NOT re-send the email or WhatsApp, re-upload to Drive, or touch Calendar. Because every client channel picks its image from the current status (§7), the viewer link the client already has switches to the official contract by itself; a fresh email with the official contract is sent only through the manual "Reenviar" action.
+
 This pattern (status columns + manual retry) is the intended replacement for a queue's retry mechanism. Do not introduce a queue, cron job, or background worker to "improve" this — it is a deliberate simplification given the low volume.
 
 ### 4.3 User login vs. the Google Master connection — do not conflate these
@@ -293,6 +295,8 @@ Singleton table — application logic must enforce exactly one row.
 - Any field whose text may exceed its allotted space (client name, address, service list) must wrap to multiple lines within `maxWidth` rather than overflowing — implement a shared `drawWrappedText(ctx, text, field)` helper used for every field, not just the long ones.
 - Money fields are formatted with `Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' })`.
 - Output format: JPEG buffer, same as the legacy implementation.
+- Two templates exist: `contract.jpg` (official, "Contrato") and `pre-contract.jpg` ("Precontrato"), sharing one field map. Drive stores both (`Contrato<folio>.jpg`, `Precontrato<folio>.jpg`); Calendar links both.
+- **Client-facing variant is decided by the contract's CURRENT `contract_status`, at send/request time:** `pre_contract` → Precontrato; `confirmed`/`completed` → Contrato; `cancelled` → no client-facing image (viewer and image route return 404; email and WhatsApp refuse to send). The attachment/download filename is `<Precontrato|Contrato><folio>.jpg`. This rule lives in one helper (`clientFacingImage`); no caller may assume a default variant.
 
 ## 8. Contract creation flow ("store mode")
 
@@ -327,6 +331,8 @@ Filterable by date range, price list, creating user, client, and event type (per
 Two routes are reachable with no authentication, and only two: the contract viewer below, and the pre-contract flow (§8.1). Both are registered in `src/proxy.ts`'s `PUBLIC_PREFIXES`; anything absent from that list redirects to `/login`.
 
 **Public contract viewer.** Route: `/contracts/view/[viewerToken]`, no authentication. Displays the generated contract image (and/or the underlying data) for the client to review. This is the destination of the link ManyChat sends over WhatsApp. Must not expose any other contract's data or any internal numeric ID.
+
+The viewer shows the variant for the contract's current status (§7) — title, heading, alt text, image and download filename all say "Precontrato" or "Contrato" accordingly — and returns a generic 404 for a cancelled contract, on both the page and its `/image` sub-route. The image response is `Cache-Control: private` (never shared caches); the page versions the image URL by variant so a status change is never masked by a cached copy.
 
 ## 11. Hosting and environment
 

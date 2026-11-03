@@ -70,9 +70,13 @@ async function loadContractImageData(contractId: string): Promise<ContractImageD
   };
 }
 
+// `variant` is deliberately REQUIRED (no default): every caller that hands an
+// image to the client must decide it from the contract's current status via
+// `clientFacingImage` (spec §7) — a silent `"contract"` default is exactly how
+// pre-contracts used to reach clients as the official Contrato.
 export async function getContractImageBuffer(
   contractId: string,
-  variant: ContractTemplateVariant = "contract"
+  variant: ContractTemplateVariant
 ): Promise<Buffer> {
   return generateContractImage(await loadContractImageData(contractId), variant);
 }

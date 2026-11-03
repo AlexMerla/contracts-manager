@@ -47,7 +47,7 @@ describe("sendContractEmail (no-clientEmail guard, real DB, no Resend call)", ()
     await prisma.contract.create({
       data: {
         id: contractId,
-        folio: `throwaway-${contractId}`,
+        folio: `CT-TEST-${contractId.slice(0, 8)}`,
         clientName: "Cliente sin correo",
         clientEmail: null,
         eventType: "other",
@@ -75,5 +75,66 @@ describe("sendContractEmail (no-clientEmail guard, real DB, no Resend call)", ()
       ok: false,
       message: "El contrato no tiene correo del cliente; no hay a dónde enviarlo.",
     });
+  });
+});
+
+describe("sendContractEmail (cancelled guard, real DB, no Resend call)", () => {
+  const userId = randomUUID();
+  const priceListId = randomUUID();
+  const contractId = randomUUID();
+
+  beforeAll(async () => {
+    await prisma.user.create({
+      data: {
+        id: userId,
+        name: "Throwaway (contract-email cancelled test)",
+        email: `throwaway-${userId}@example.com`,
+        passwordHash: "unused-in-this-test",
+        role: "normal",
+      },
+    });
+    await prisma.priceList.create({
+      data: { id: priceListId, name: "Throwaway (contract-email cancelled test)" },
+    });
+    await prisma.contract.create({
+      data: {
+        id: contractId,
+        // `CT-TEST-` (the legacy prefix `nextFolio` skips): a free-form folio
+        // sorts after the digits and turns a concurrent createContract's
+        // next folio into "00NaN".
+        folio: `CT-TEST-${contractId.slice(0, 8)}`,
+        clientName: "Cliente cancelado",
+        // A real address: the refusal must come from the status, not from
+        // the no-email guard above.
+        clientEmail: "cliente-cancelado@example.com",
+        contractStatus: "cancelled",
+        cancellationReason: "Prueba",
+        eventType: "other",
+        eventDate: new Date("2027-01-01T00:00:00.000Z"),
+        subtotal: 0,
+        total: 0,
+        deposit: 0,
+        balance: 0,
+        viewerToken: randomUUID(),
+        priceListId,
+        createdById: userId,
+      },
+    });
+  });
+
+  afterAll(async () => {
+    await prisma.contract.delete({ where: { id: contractId } });
+    await prisma.priceList.delete({ where: { id: priceListId } });
+    await prisma.user.delete({ where: { id: userId } });
+  });
+
+  it("refuses to send and leaves emailSent untouched", async () => {
+    const result = await sendContractEmail(contractId);
+    expect(result).toEqual({
+      ok: false,
+      message: "El contrato está cancelado; no se envía al cliente.",
+    });
+    const after = await prisma.contract.findUniqueOrThrow({ where: { id: contractId } });
+    expect(after.emailSent).toBe(false);
   });
 });

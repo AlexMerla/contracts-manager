@@ -23,6 +23,8 @@
 // on a preview deployment it silently points at production — a confusing
 // failure mode. An explicit, required variable fails loudly instead.
 
+import type { ContractTemplateVariant } from "@/lib/contract-template/generate-contract-image";
+
 /** Spanish, operator-facing — surfaces through a delivery step's `message`. */
 const MISSING =
   "APP_BASE_URL no está configurada. Defina la URL pública de la aplicación " +
@@ -60,6 +62,18 @@ export function appBaseUrl(): string {
  * origin is implicit — e.g. the `<img src>` inside the viewer page itself. */
 export function contractViewerPath(viewerToken: string): string {
   return `/contracts/view/${encodeURIComponent(viewerToken)}`;
+}
+
+/** The viewer's image route, versioned by the variant the page is about to
+ * show. The route itself ignores `v` and always renders from the contract's
+ * CURRENT status; the query string exists only so a status change (pre-contract
+ * → contract) yields a new URL and the browser's `private, max-age=300` copy
+ * of the old variant can never be shown under the new page. */
+export function contractViewerImagePath(
+  viewerToken: string,
+  variant: ContractTemplateVariant
+): string {
+  return `${contractViewerPath(viewerToken)}/image?v=${variant}`;
 }
 
 /** Absolute public viewer URL — what goes in the email body and in ManyChat's
