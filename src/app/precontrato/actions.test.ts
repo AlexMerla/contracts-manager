@@ -383,6 +383,42 @@ describe("createPublicPreContract", () => {
     expect((result as { error: string }).error).toMatch(/Falta elegir una opción/);
   });
 
+  // edit-precontract — characterization BEFORE the pricing loop moves to
+  // `@/lib/contracts/price-order`: exact (deliberately generic) copy.
+  it("characterization: exact rejection copy for every pricing/validation failure", async () => {
+    async function errorFor(patch: Partial<CreatePublicPreContractPayload>): Promise<string | undefined> {
+      const result = await createPublicPreContract({ ...basePayload(), ...patch });
+      return "error" in result ? result.error : undefined;
+    }
+    const unavailable = "Alguno de los paquetes de su pedido ya no está disponible.";
+
+    expect(
+      await errorFor({
+        orderLines: [
+          { packageId: packageNoServiceId, quantity: 1 },
+          { packageId: packageNoServiceId, quantity: 1 },
+        ],
+        serviceSelections: [],
+      })
+    ).toBe("Su pedido tiene paquetes repetidos.");
+    expect(
+      await errorFor({ orderLines: [{ packageId: randomUUID(), quantity: 1 }], serviceSelections: [] })
+    ).toBe(unavailable);
+    expect(
+      await errorFor({ orderLines: [{ packageId: packageInactiveId, quantity: 1 }], serviceSelections: [] })
+    ).toBe(unavailable);
+    expect(
+      await errorFor({ orderLines: [{ packageId: packageNoPriceId, quantity: 1 }], serviceSelections: [] })
+    ).toBe(unavailable);
+    expect(await errorFor({ orderLines: [{ packageId: packageWithServiceId, quantity: 4 }] })).toBe(
+      'La cantidad de "Paquete con servicio (public)" excede el máximo permitido (3).'
+    );
+    expect(await errorFor({ serviceSelections: [{ serviceId, selectedOption: "Opción Z" }] })).toBe(
+      'Falta elegir una opción para el servicio "Servicio con opciones (public)".'
+    );
+    expect(mockRunPipeline).not.toHaveBeenCalled();
+  });
+
   it("a house-user-owned pre-contract is invisible to a normal session and visible to super (spec §5)", async () => {
     const result = await createPublicPreContract(basePayload());
     expect("success" in result && result.success).toBe(true);

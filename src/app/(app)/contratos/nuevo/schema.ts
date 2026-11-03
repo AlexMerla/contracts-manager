@@ -35,3 +35,17 @@ export const createContractPayloadSchema = z.object({
 });
 
 export type CreateContractPayload = z.infer<typeof createContractPayloadSchema>;
+
+// edit-precontract (spec §8.2) — the edit payload. Derived from the create
+// payload so the two can never disagree on a field's validation, minus
+// `priceListId` (immutable on an existing contract) plus the target id.
+// `folio`, `viewerToken`, `createdById` are not declared, so zod strips any
+// supplied value before `updateContract` ever sees it (spec R3).
+export const updateContractPayloadSchema = createContractPayloadSchema
+  .omit({ priceListId: true })
+  .extend({
+    contractId: z.string().uuid(),
+    orderLines: z.array(orderLineSchema).min(1, "El contrato debe incluir al menos un paquete."),
+  });
+
+export type UpdateContractPayload = z.infer<typeof updateContractPayloadSchema>;

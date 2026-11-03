@@ -8,6 +8,7 @@ import { Stepper } from "@/components/ui/stepper";
 import { Card, CardContent } from "@/components/ui/card";
 
 import { createContract } from "../actions";
+import { updateContract } from "../[id]/actions";
 import { OrderSummaryPanel } from "./order-summary-panel";
 import { StepPriceList } from "./steps/step-price-list";
 import { StepPackages } from "./steps/step-packages";
@@ -21,6 +22,7 @@ import type {
   CatalogPriceList,
   OrderLine,
   QuotedLine,
+  WizardEditMode,
 } from "./types";
 
 type StepNumber = 1 | 2 | 3 | 4 | 5;
@@ -37,6 +39,11 @@ interface ContractWizardProps {
   priceLists: CatalogPriceList[];
   categories: CatalogCategory[];
   depositThresholds: DepositThresholds;
+  /** edit-precontract: open on an existing contract. In this mode the price
+   * list is read-only, kept lines show their snapshot price (see
+   * `CatalogPackage.priceLocked`), the deposit is never re-proposed by the
+   * threshold rule, and confirming calls `updateContract`. */
+  edit?: WizardEditMode;
 }
 
 // Orchestrates spec §8's 6-step "store mode" flow (sprint-04 tasks 1-5 are
@@ -44,18 +51,29 @@ interface ContractWizardProps {
 // `createContract` in ../actions.ts, called only from the final confirm
 // step). No database write happens before that call — every field here is
 // plain client state.
-export function ContractWizard({ priceLists, categories, depositThresholds }: ContractWizardProps) {
+export function ContractWizard({
+  priceLists,
+  categories,
+  depositThresholds,
+  edit,
+}: ContractWizardProps) {
   const router = useRouter();
   const defaultPriceListId = priceLists.find((pl) => pl.isDefault)?.id ?? priceLists[0]?.id ?? "";
 
   const [step, setStep] = useState<StepNumber>(1);
   const [priceListId, setPriceListId] = useState(defaultPriceListId);
-  const [orderLines, setOrderLines] = useState<OrderLine[]>([]);
-  const [serviceSelections, setServiceSelections] = useState<Record<string, string>>({});
-  const [contractData, setContractData] = useState<ContractDataFormValues | null>(null);
-  const [discount, setDiscount] = useState<number | null>(null);
-  const [extraCharge, setExtraCharge] = useState<number | null>(null);
-  const [depositOverride, setDepositOverride] = useState<number | null>(null);
+  const [orderLines, setOrderLines] = useState<OrderLine[]>(edit?.orderLines ?? []);
+  const [serviceSelections, setServiceSelections] = useState<Record<string, string>>(
+    edit?.serviceSelections ?? {}
+  );
+  const [contractData, setContractData] = useState<ContractDataFormValues | null>(
+    edit?.contractData ?? null
+  );
+  const [discount, setDiscount] = useState<number | null>(edit?.discount ?? null);
+  const [extraCharge, setExtraCharge] = useState<number | null>(edit?.extraCharge ?? null);
+  // In edit mode the stored deposit IS the override: an existing contract's
+  // deposit is an agreed amount, not a proposal to recompute.
+  const [depositOverride, setDepositOverride] = useState<number | null>(edit?.deposit ?? null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -112,9 +130,18 @@ export function ContractWizard({ priceLists, categories, depositThresholds }: Co
   const deposit = depositOverride ?? calculateDefaultDeposit(total, depositThresholds);
   const balance = total - deposit;
 
+  // Creating: any order change hands the deposit back to the threshold rule.
+  // Editing: the deposit stays as agreed (and is locked once collected); the
+  // user changes it explicitly in step 5 if it is still pending.
+  function resetDepositProposal() {
+    if (!edit) {
+      setDepositOverride(null);
+    }
+  }
+
   function addPackage(packageId: string) {
     setOrderLines((current) => [...current, { packageId, quantity: 1 }]);
-    setDepositOverride(null);
+    resetDepositProposal();
   }
 
   function removePackage(packageId: string) {
@@ -130,7 +157,7 @@ export function ContractWizard({ priceLists, categories, depositThresholds }: Co
       }
       return next;
     });
-    setDepositOverride(null);
+    resetDepositProposal();
   }
 
   function setQuantity(packageId: string, quantity: number) {
@@ -140,7 +167,7 @@ export function ContractWizard({ priceLists, categories, depositThresholds }: Co
     setOrderLines((current) =>
       current.map((line) => (line.packageId === packageId ? { ...line, quantity: clamped } : line))
     );
-    setDepositOverride(null);
+    resetDepositProposal();
   }
 
   function goToStep(next: StepNumber) {
@@ -155,8 +182,7 @@ export function ContractWizard({ priceLists, categories, depositThresholds }: Co
     setIsSubmitting(true);
     setSubmitError(null);
 
-    const result = await createContract({
-      priceListId,
+    const order = {
       orderLines,
       serviceSelections: requiredServices.map((service) => ({
         serviceId: service.id,
@@ -166,7 +192,22 @@ export function ContractWizard({ priceLists, categories, depositThresholds }: Co
       discount,
       extraCharge,
       deposit,
-    });
+    };
+
+    if (edit) {
+      const result = await updateContract({ contractId: edit.contractId, ...order });
+      setIsSubmitting(false);
+      if ("error" in result) {
+        setSubmitError(result.error);
+        return;
+      }
+      // `editado=1` shows the "remember to resend" banner (spec §8.2 copy);
+      // a no-op save simply returns to the detail.
+      router.push(`/contratos/${edit.contractId}${result.changed ? "?editado=1" : ""}`);
+      return;
+    }
+
+    const result = await createContract({ priceListId, ...order });
 
     setIsSubmitting(false);
 
@@ -201,6 +242,7 @@ export function ContractWizard({ priceLists, categories, depositThresholds }: Co
             <StepPriceList
               priceLists={priceLists}
               priceListId={priceListId}
+              readOnly={edit != null}
               onChange={setPriceListId}
               onNext={() => goToStep(2)}
             />
@@ -254,6 +296,11 @@ export function ContractWizard({ priceLists, categories, depositThresholds }: Co
               onDiscountChange={setDiscount}
               onExtraChargeChange={setExtraCharge}
               onDepositChange={setDepositOverride}
+              edit={
+                edit
+                  ? { depositLocked: edit.depositLocked, totalPaid: edit.totalPaid }
+                  : undefined
+              }
               submitError={submitError}
               isSubmitting={isSubmitting}
               onBack={() => goToStep(4)}

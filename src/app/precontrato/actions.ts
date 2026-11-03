@@ -7,6 +7,7 @@ import { headers } from "next/headers";
 import { runContractDeliveryPipeline } from "@/lib/contracts/delivery-pipeline";
 import { isFolioCollision, nextFolio } from "@/lib/contracts/folio";
 import { getHouseUserId } from "@/lib/contracts/house-user";
+import { priceOrder, type PriceOrderFailure } from "@/lib/contracts/price-order";
 import { getPublicPriceList } from "@/lib/contracts/public-price-list";
 import { calculateDefaultDeposit } from "@/lib/deposit";
 import { getDepositThresholds } from "@/lib/deposit-config";
@@ -43,6 +44,24 @@ const UNAVAILABLE =
   "Por el momento no podemos procesar su solicitud en línea. Comuníquese con nosotros y con gusto lo atendemos.";
 
 const MAX_FOLIO_ATTEMPTS = 3;
+
+// Generic for a missing/inactive/unpriced package alike: an anonymous caller
+// must not be able to enumerate the catalog by error message. Copy pinned by
+// the characterization tests in ./actions.test.ts.
+function publicFailureMessage(failure: PriceOrderFailure): string {
+  switch (failure.kind) {
+    case "duplicate_package":
+      return "Su pedido tiene paquetes repetidos.";
+    case "missing_package":
+    case "inactive_package":
+    case "unpriced_package":
+      return "Alguno de los paquetes de su pedido ya no está disponible.";
+    case "over_max_quantity":
+      return `La cantidad de "${failure.packageName}" excede el máximo permitido (${failure.maxQuantity}).`;
+    case "missing_selection":
+      return `Falta elegir una opción para el servicio "${failure.serviceName}".`;
+  }
+}
 
 export async function createPublicPreContract(
   input: CreatePublicPreContractPayload
@@ -86,78 +105,26 @@ export async function createPublicPreContract(
     return { error: UNAVAILABLE };
   }
 
-  const packageIds = data.orderLines.map((line) => line.packageId);
-  if (new Set(packageIds).size !== packageIds.length) {
-    return { error: "Su pedido tiene paquetes repetidos." };
-  }
-
-  const packages = await prisma.package.findMany({
-    where: { id: { in: packageIds } },
-    include: {
-      packagePrices: { where: { priceListId: priceList.id } },
-      packageServices: { include: { service: true } },
-      category: { select: { name: true } },
-    },
+  // Shared with the internal flow (edit-precontract extraction): the public
+  // list's prices and the live required services, resolved server-side.
+  const priced = await priceOrder(prisma, {
+    priceListId: priceList.id,
+    orderLines: data.orderLines,
+    serviceSelections: data.serviceSelections,
   });
-  const packageById = new Map(packages.map((pkg) => [pkg.id, pkg]));
-
-  let subtotal = 0;
-  const contractPackagesData: {
-    packageId: string;
-    nameSnapshot: string;
-    priceSnapshot: number;
-    quantity: number;
-  }[] = [];
-  const requiredServices = new Map<string, { name: string; options: string[] }>();
-
-  for (const line of data.orderLines) {
-    const pkg = packageById.get(line.packageId);
-    // Generic for a missing/inactive/unpriced package alike: an anonymous
-    // caller must not be able to enumerate the catalog by error message.
-    if (!pkg || !pkg.active) {
-      return { error: "Alguno de los paquetes de su pedido ya no está disponible." };
-    }
-
-    const maxQuantity = pkg.maxQuantity ?? 1;
-    if (line.quantity > maxQuantity) {
-      return {
-        error: `La cantidad de "${pkg.name}" excede el máximo permitido (${maxQuantity}).`,
-      };
-    }
-
-    const price = pkg.packagePrices[0]?.price;
-    if (price == null) {
-      return { error: "Alguno de los paquetes de su pedido ya no está disponible." };
-    }
-
-    const unitPrice = Number(price);
-    subtotal += unitPrice * line.quantity;
-
-    contractPackagesData.push({
-      packageId: pkg.id,
-      // Spec §6.5 — the snapshot, same rule as the internal path.
-      nameSnapshot: pkg.name,
-      priceSnapshot: unitPrice,
-      quantity: line.quantity,
-    });
-
-    for (const { service } of pkg.packageServices) {
-      const options = Array.isArray(service.options) ? (service.options as string[]) : [];
-      if (options.length > 0) {
-        requiredServices.set(service.id, { name: service.name, options });
-      }
-    }
+  if (!priced.ok) {
+    return { error: publicFailureMessage(priced.failure) };
   }
-
-  const selectionByServiceId = new Map(
-    data.serviceSelections.map((selection) => [selection.serviceId, selection.selectedOption])
+  const { subtotal, selections: contractServiceSelectionsData } = priced;
+  // Spec §6.5 — the snapshot, same rule as the internal path.
+  const contractPackagesData = priced.lines.map(
+    ({ packageId, nameSnapshot, priceSnapshot, quantity }) => ({
+      packageId,
+      nameSnapshot,
+      priceSnapshot,
+      quantity,
+    })
   );
-  for (const [serviceId, { name, options }] of requiredServices) {
-    const selected = selectionByServiceId.get(serviceId);
-    if (!selected || !options.includes(selected)) {
-      return { error: `Falta elegir una opción para el servicio "${name}".` };
-    }
-  }
 
   // ---- Amounts. None of this comes from the request. -----------------
   // Q4: the deposit is RECORDED as owed, never charged — there is no payment
@@ -178,11 +145,6 @@ export async function createPublicPreContract(
         "Su pedido requiere un anticipo mayor al total. Comuníquese con nosotros para armar su contrato.",
     };
   }
-
-  const contractServiceSelectionsData = Array.from(requiredServices.keys()).map((serviceId) => ({
-    serviceId,
-    selectedOption: selectionByServiceId.get(serviceId) as string,
-  }));
 
   const viewerToken = randomUUID();
   const {

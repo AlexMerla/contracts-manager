@@ -100,3 +100,47 @@ export async function runContractDeliveryPipeline({
     console.error(`WhatsApp trigger threw for contract ${contractId}:`, error);
   }
 }
+
+/**
+ * edit-precontract (spec §8.2 step 6) — what runs after `updateContract`
+ * commits: image → Drive (overwrite in place) → Calendar. Same fail-open,
+ * one-try/catch-per-step rules as the creation pipeline above.
+ *
+ * Deliberately NO email and NO WhatsApp: an edit never re-sends anything to
+ * the client automatically (user decision) — staff use "Reenviar". The edit
+ * reset `imageGenerated` / `driveUploaded` / `calendarCreated` to `false`, so
+ * each step that succeeds flips its own flag back and each that fails leaves
+ * the detail page's retry row showing.
+ */
+export async function runContractEditPipeline(contractId: string): Promise<void> {
+  let contractImages: ContractImagePair | null = null;
+  try {
+    contractImages = await getContractImageBuffers(contractId);
+    await prisma.contract.update({
+      where: { id: contractId },
+      data: { imageGenerated: true },
+    });
+  } catch (error: unknown) {
+    console.error(`Failed to regenerate image after editing contract ${contractId}:`, error);
+  }
+
+  // Drive BEFORE Calendar (same reason as above). With `driveUploaded` reset,
+  // `uploadContractImageToDrive` overwrites the existing file ids in place.
+  try {
+    const drive = await uploadContractImageToDrive(contractId, contractImages ?? undefined);
+    if (!drive.ok) {
+      console.error(`Drive overwrite failed after editing contract ${contractId}: ${drive.message}`);
+    }
+  } catch (error: unknown) {
+    console.error(`Drive overwrite threw after editing contract ${contractId}:`, error);
+  }
+
+  try {
+    const calendar = await upsertContractCalendarEvent(contractId);
+    if (!calendar.ok) {
+      console.error(`Calendar update failed after editing contract ${contractId}: ${calendar.message}`);
+    }
+  } catch (error: unknown) {
+    console.error(`Calendar update threw after editing contract ${contractId}:`, error);
+  }
+}

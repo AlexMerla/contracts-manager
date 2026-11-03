@@ -71,9 +71,10 @@ export async function GET(
       // Five minutes is enough to cover a reload or a second device opening the
       // same link, and short enough that an edit plus a regeneration shows up
       // promptly — the image is derived data, re-rendered on every miss. A
-      // STATUS change does not wait out these five minutes: the viewer page
-      // requests `?v=<variant>` (`contractViewerImagePath`), so confirming a
-      // contract changes the URL and the browser has no cached copy of it.
+      // STATUS change or an EDIT does not wait out these five minutes: the
+      // viewer page requests `?v=<variant>.<updatedAt>` (`contractViewerImagePath`),
+      // so confirming or editing a contract changes the URL and the browser has
+      // no cached copy of it.
       "Cache-Control": "private, max-age=300",
       "X-Robots-Tag": "noindex, noimageindex",
     },

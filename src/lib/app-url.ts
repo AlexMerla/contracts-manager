@@ -64,16 +64,19 @@ export function contractViewerPath(viewerToken: string): string {
   return `/contracts/view/${encodeURIComponent(viewerToken)}`;
 }
 
-/** The viewer's image route, versioned by the variant the page is about to
- * show. The route itself ignores `v` and always renders from the contract's
- * CURRENT status; the query string exists only so a status change (pre-contract
- * → contract) yields a new URL and the browser's `private, max-age=300` copy
- * of the old variant can never be shown under the new page. */
+/** The viewer's image route, versioned by WHAT the page is about to show:
+ * the variant plus the contract's `updatedAt`. The route itself ignores `v`
+ * and always renders from the contract's CURRENT stored data; the query
+ * string exists only so a status change (pre-contract → contract) or an edit
+ * (edit-precontract) yields a new URL, and the browser's `private,
+ * max-age=300` copy of the old image can never be shown under the new page.
+ * `updatedAt` is base-36 encoded — opaque, short, and still monotonic. */
 export function contractViewerImagePath(
   viewerToken: string,
-  variant: ContractTemplateVariant
+  variant: ContractTemplateVariant,
+  updatedAt: Date
 ): string {
-  return `${contractViewerPath(viewerToken)}/image?v=${variant}`;
+  return `${contractViewerPath(viewerToken)}/image?v=${variant}.${updatedAt.getTime().toString(36)}`;
 }
 
 /** Absolute public viewer URL — what goes in the email body and in ManyChat's

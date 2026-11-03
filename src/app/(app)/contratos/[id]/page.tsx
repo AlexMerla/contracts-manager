@@ -4,16 +4,23 @@ import { notFound, redirect } from "next/navigation";
 import {
   ArrowLeft,
   CalendarDays,
+  CheckCircle2,
   CircleAlert,
   FileImage,
   HardDrive,
   Link2,
+  Pencil,
 } from "lucide-react";
 
 import { auth } from "@/lib/auth";
 import { scopeToOwner } from "@/lib/authorization";
 import { contractViewerImagePath, tryContractViewerUrl } from "@/lib/app-url";
 import { clientFacingImage } from "@/lib/contract-template/client-facing-variant";
+import {
+  CONTRACT_EDIT_BLOCK_MESSAGE,
+  contractEditBlock,
+  type ContractEditBlock,
+} from "@/lib/contracts/contract-edit";
 import { EVENT_TYPE_LABEL } from "@/lib/event-type";
 import { driveFileViewUrl } from "@/lib/google/drive";
 import { Alert } from "@/components/ui/alert";
@@ -63,19 +70,30 @@ const timeFormatter = new Intl.DateTimeFormat("es-MX", {
 
 interface ContratoDetailPageProps {
   params: Promise<{ id: string }>;
+  /** edit-precontract: `editado=1` after a saved edit; `edicion=<block>` when
+   * the edit route refused a non-editable contract. */
+  searchParams: Promise<{ editado?: string; edicion?: string }>;
+}
+
+function isEditBlock(value: string | undefined): value is ContractEditBlock {
+  return value !== undefined && Object.hasOwn(CONTRACT_EDIT_BLOCK_MESSAGE, value);
 }
 
 // Spec §5: `normal` may only view a contract where `createdById = self`;
 // `scopeToOwner` makes `findUnique` return `null` for a contract the
 // session doesn't own, which this renders as a plain 404 — a `normal` user
 // gets no signal that another user's contract even exists at that id.
-export default async function ContratoDetailPage({ params }: ContratoDetailPageProps) {
+export default async function ContratoDetailPage({
+  params,
+  searchParams,
+}: ContratoDetailPageProps) {
   const session = await auth();
   if (!session) {
     redirect("/login");
   }
 
   const { id } = await params;
+  const { editado, edicion } = await searchParams;
 
   const db = scopeToOwner(session);
   const contract = await db.contract.findUnique({
@@ -108,10 +126,14 @@ export default async function ContratoDetailPage({ params }: ContratoDetailPageP
   // Spec §7: what the client is shown right now (`null` once cancelled) — the
   // "Ver" link below opens exactly that, through the public image route.
   const clientImage = clientFacingImage(contract.contractStatus);
+  // Spec §5 editing rule. Ownership is already proven (this page 404s on a
+  // contract the session cannot see), so editability is the only gate left.
+  const isEditable = contractEditBlock(contract.contractStatus, contract.paymentStatus) === null;
 
   // Sprint 8 task 2 / spec "Live Balance Derivation": `contracts.total` is a
-  // creation-time snapshot (never rewritten); the amount actually collected
-  // is always the live SUM of `payments`, never a stored column. The
+  // snapshot rewritten only by an edit (edit-precontract), never by a
+  // payment; the amount actually collected is always the live SUM of
+  // `payments`, never a stored column. The
   // displayed "saldo por cobrar" clamps at zero rather than going negative
   // on an accepted overpayment (design decision #6) — the row itself still
   // keeps the real amount paid.
@@ -144,6 +166,16 @@ export default async function ContratoDetailPage({ params }: ContratoDetailPageP
         }
         actions={
           <>
+            {/* Spec §5 editing rule — hidden once settled or closed. */}
+            {isEditable && (
+              <Button
+                variant="outline"
+                render={<Link href={`/contratos/${contract.id}/editar`} />}
+              >
+                <Icon icon={Pencil} />
+                Editar
+              </Button>
+            )}
             {/* Client-facing redelivery only. Drive/Calendar/image retries
                 are NOT folded in here — they repair internal artefacts and
                 sit on their own row in "Documento y respaldos". */}
@@ -169,136 +201,149 @@ export default async function ContratoDetailPage({ params }: ContratoDetailPageP
       />
 
       <div className="mx-auto grid w-full max-w-[1280px] grid-cols-1 gap-6 px-7 py-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
-        <Tabs defaultValue="resumen">
-          <TabsList>
-            <TabsTab value="resumen">Resumen</TabsTab>
-            <TabsTab value="pagos" count={contract.payments.length}>
-              Pagos
-            </TabsTab>
-            <TabsTab value="notas" count={contract.notes.length}>
-              Notas
-            </TabsTab>
-          </TabsList>
+        <div className="flex min-w-0 flex-col gap-4">
+          {editado === "1" && (
+            <Alert
+              tone="success"
+              icon={CheckCircle2}
+              title="Cambios guardados."
+              description="Recuerda reenviar el contrato al cliente si ya lo recibió."
+            />
+          )}
+          {isEditBlock(edicion) && (
+            <Alert tone="warning" icon={CircleAlert} title={CONTRACT_EDIT_BLOCK_MESSAGE[edicion]} />
+          )}
+          <Tabs defaultValue="resumen">
+            <TabsList>
+              <TabsTab value="resumen">Resumen</TabsTab>
+              <TabsTab value="pagos" count={contract.payments.length}>
+                Pagos
+              </TabsTab>
+              <TabsTab value="notas" count={contract.notes.length}>
+                Notas
+              </TabsTab>
+            </TabsList>
 
-          <TabsPanel value="resumen" className="flex flex-col gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Datos del contrato</CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-4 sm:grid-cols-2">
-                <DetailField label="Cliente" value={contract.clientName} />
-                <DetailField label="Tipo de evento" value={EVENT_TYPE_LABEL[contract.eventType]} />
-                <DetailField label="Festejado(s)" value={contract.celebrated} />
-                <DetailField label="Fecha del evento" value={eventDateLabel} />
-                <DetailField
-                  label="Hora del evento"
-                  value={contract.eventTime ? timeFormatter.format(contract.eventTime) : null}
-                />
-                <DetailField label="Lugar" value={contract.placeName} />
-                <DetailField label="Dirección del lugar" value={contract.placeAddress} />
-                <DetailField label="Teléfono" value={contract.clientPhone} />
-                <DetailField label="Celular" value={contract.clientMobile} />
-                <DetailField label="Correo" value={contract.clientEmail} />
-                <DetailField label="Dirección del cliente" value={contract.clientAddress} />
-                <DetailField label="Lista de precios" value={contract.priceList.name} />
-                <DetailField label="Creado por" value={contract.createdBy.name} />
-              </CardContent>
-            </Card>
+            <TabsPanel value="resumen" className="flex flex-col gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Datos del contrato</CardTitle>
+                </CardHeader>
+                <CardContent className="grid gap-4 sm:grid-cols-2">
+                  <DetailField label="Cliente" value={contract.clientName} />
+                  <DetailField label="Tipo de evento" value={EVENT_TYPE_LABEL[contract.eventType]} />
+                  <DetailField label="Festejado(s)" value={contract.celebrated} />
+                  <DetailField label="Fecha del evento" value={eventDateLabel} />
+                  <DetailField
+                    label="Hora del evento"
+                    value={contract.eventTime ? timeFormatter.format(contract.eventTime) : null}
+                  />
+                  <DetailField label="Lugar" value={contract.placeName} />
+                  <DetailField label="Dirección del lugar" value={contract.placeAddress} />
+                  <DetailField label="Teléfono" value={contract.clientPhone} />
+                  <DetailField label="Celular" value={contract.clientMobile} />
+                  <DetailField label="Correo" value={contract.clientEmail} />
+                  <DetailField label="Dirección del cliente" value={contract.clientAddress} />
+                  <DetailField label="Lista de precios" value={contract.priceList.name} />
+                  <DetailField label="Creado por" value={contract.createdBy.name} />
+                </CardContent>
+              </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Servicios contratados</CardTitle>
-                <CardDescription>
-                  Nombre y precio tomados del contrato al momento de crearse — no
-                  reflejan cambios posteriores del catálogo (spec §6.5).
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="flex flex-col gap-4">
-                <div className="overflow-x-auto rounded-lg ring-1 ring-foreground/10 shadow-sm">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Paquete</TableHead>
-                        <TableHead className="text-right">Cantidad</TableHead>
-                        <TableHead className="text-right">Precio unitario</TableHead>
-                        <TableHead className="text-right">Importe</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {contract.contractPackages.map((line) => (
-                        <TableRow key={line.id}>
-                          <TableCell>{line.nameSnapshot}</TableCell>
-                          <TableCell className="text-right">{line.quantity}</TableCell>
-                          <TableCell className="text-right">
-                            <Money amount={Number(line.priceSnapshot)} />
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Money amount={Number(line.priceSnapshot) * line.quantity} />
-                          </TableCell>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Servicios contratados</CardTitle>
+                  <CardDescription>
+                    Nombre y precio tomados del contrato al momento de crearse — no
+                    reflejan cambios posteriores del catálogo (spec §6.5).
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-4">
+                  <div className="overflow-x-auto rounded-lg ring-1 ring-foreground/10 shadow-sm">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Paquete</TableHead>
+                          <TableHead className="text-right">Cantidad</TableHead>
+                          <TableHead className="text-right">Precio unitario</TableHead>
+                          <TableHead className="text-right">Importe</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-
-                {contract.contractServiceSelections.length > 0 && (
-                  <div className="flex flex-col gap-2">
-                    <SectionLabel>Opciones de servicio elegidas</SectionLabel>
-                    {contract.contractServiceSelections.map((selection) => (
-                      <div
-                        key={selection.id}
-                        className="flex items-center justify-between text-sm"
-                      >
-                        <span className="text-muted-foreground">{selection.service.name}</span>
-                        <span>{selection.selectedOption}</span>
-                      </div>
-                    ))}
+                      </TableHeader>
+                      <TableBody>
+                        {contract.contractPackages.map((line) => (
+                          <TableRow key={line.id}>
+                            <TableCell>{line.nameSnapshot}</TableCell>
+                            <TableCell className="text-right">{line.quantity}</TableCell>
+                            <TableCell className="text-right">
+                              <Money amount={Number(line.priceSnapshot)} />
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Money amount={Number(line.priceSnapshot) * line.quantity} />
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
                   </div>
-                )}
 
-                {/* Anticipo and Saldo deliberately do NOT repeat here: the
-                    sidebar's "Estado de cuenta" owns the money still owed
-                    (derived live from SUM(payments)), and two places showing
-                    the same figures is two places to drift. */}
-                <div className="flex flex-col gap-2 border-t pt-4">
-                  <AmountRow label="Subtotal" amount={Number(contract.subtotal)} />
-                  {contract.discount != null && (
-                    <AmountRow label="Descuento" amount={-Number(contract.discount)} />
+                  {contract.contractServiceSelections.length > 0 && (
+                    <div className="flex flex-col gap-2">
+                      <SectionLabel>Opciones de servicio elegidas</SectionLabel>
+                      {contract.contractServiceSelections.map((selection) => (
+                        <div
+                          key={selection.id}
+                          className="flex items-center justify-between text-sm"
+                        >
+                          <span className="text-muted-foreground">{selection.service.name}</span>
+                          <span>{selection.selectedOption}</span>
+                        </div>
+                      ))}
+                    </div>
                   )}
-                  {contract.extraCharge != null && (
-                    <AmountRow label="Cargo extra" amount={Number(contract.extraCharge)} />
-                  )}
-                  <AmountRow label="Total" amount={total} emphasize />
-                </div>
-              </CardContent>
-            </Card>
-          </TabsPanel>
 
-          <TabsPanel value="pagos">
-            <PaymentsTab
-              payments={contract.payments.map((payment) => ({
-                id: payment.id,
-                folio: payment.folio,
-                paymentDate: payment.paymentDate,
-                concept: payment.concept,
-                method: payment.method,
-                amount: Number(payment.amount),
-              }))}
-            />
-          </TabsPanel>
+                  {/* Anticipo and Saldo deliberately do NOT repeat here: the
+                      sidebar's "Estado de cuenta" owns the money still owed
+                      (derived live from SUM(payments)), and two places showing
+                      the same figures is two places to drift. */}
+                  <div className="flex flex-col gap-2 border-t pt-4">
+                    <AmountRow label="Subtotal" amount={Number(contract.subtotal)} />
+                    {contract.discount != null && (
+                      <AmountRow label="Descuento" amount={-Number(contract.discount)} />
+                    )}
+                    {contract.extraCharge != null && (
+                      <AmountRow label="Cargo extra" amount={Number(contract.extraCharge)} />
+                    )}
+                    <AmountRow label="Total" amount={total} emphasize />
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsPanel>
 
-          <TabsPanel value="notas">
-            <NotesTab
-              contractId={contract.id}
-              notes={contract.notes.map((note) => ({
-                id: note.id,
-                text: note.text,
-                createdAt: note.createdAt,
-                authorName: note.user.name,
-              }))}
-            />
-          </TabsPanel>
-        </Tabs>
+            <TabsPanel value="pagos">
+              <PaymentsTab
+                payments={contract.payments.map((payment) => ({
+                  id: payment.id,
+                  folio: payment.folio,
+                  paymentDate: payment.paymentDate,
+                  concept: payment.concept,
+                  method: payment.method,
+                  amount: Number(payment.amount),
+                }))}
+              />
+            </TabsPanel>
+
+            <TabsPanel value="notas">
+              <NotesTab
+                contractId={contract.id}
+                notes={contract.notes.map((note) => ({
+                  id: note.id,
+                  text: note.text,
+                  createdAt: note.createdAt,
+                  authorName: note.user.name,
+                }))}
+              />
+            </TabsPanel>
+          </Tabs>
+        </div>
 
         <aside className="flex flex-col gap-6">
           <Card>
@@ -401,7 +446,11 @@ export default async function ContratoDetailPage({ params }: ContratoDetailPageP
                     </PendingAction>
                   ) : clientImage ? (
                     <ExternalAction
-                      href={contractViewerImagePath(contract.viewerToken, clientImage.variant)}
+                      href={contractViewerImagePath(
+                        contract.viewerToken,
+                        clientImage.variant,
+                        contract.updatedAt
+                      )}
                       label="Ver"
                     />
                   ) : (

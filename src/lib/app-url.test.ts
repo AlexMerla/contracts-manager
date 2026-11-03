@@ -72,12 +72,22 @@ describe("contractViewerPath / contractViewerUrl", () => {
 });
 
 describe("contractViewerImagePath", () => {
+  const updatedAt = new Date("2026-11-02T12:00:00.000Z");
+  const version = updatedAt.getTime().toString(36);
+
   it("versions the image route by the variant being shown", () => {
-    expect(contractViewerImagePath("abc-123", "pre-contract")).toBe(
-      "/contracts/view/abc-123/image?v=pre-contract"
+    expect(contractViewerImagePath("abc-123", "pre-contract", updatedAt)).toBe(
+      `/contracts/view/abc-123/image?v=pre-contract.${version}`
     );
-    expect(contractViewerImagePath("abc-123", "contract")).toBe(
-      "/contracts/view/abc-123/image?v=contract"
+    expect(contractViewerImagePath("abc-123", "contract", updatedAt)).toBe(
+      `/contracts/view/abc-123/image?v=contract.${version}`
+    );
+  });
+
+  it("changes the URL when the contract is edited (edit-precontract)", () => {
+    const edited = new Date(updatedAt.getTime() + 1);
+    expect(contractViewerImagePath("abc-123", "contract", edited)).not.toBe(
+      contractViewerImagePath("abc-123", "contract", updatedAt)
     );
   });
 });

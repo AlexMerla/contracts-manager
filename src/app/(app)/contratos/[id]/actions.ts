@@ -4,12 +4,27 @@ import { revalidatePath } from "next/cache";
 
 import { auth } from "@/lib/auth";
 import { requireRole, scopeToOwner } from "@/lib/authorization";
+import { formatMoney } from "@/lib/contract-template/format-money";
+import {
+  CONTRACT_EDIT_BLOCK_MESSAGE,
+  contractEditBlock,
+  describeContractEditChanges,
+  toCentsOrNull,
+  type EditableContractState,
+} from "@/lib/contracts/contract-edit";
+import { runContractEditPipeline } from "@/lib/contracts/delivery-pipeline";
+import { priceOrder, type PriceOrderFailure } from "@/lib/contracts/price-order";
 import { todayInAppTimeZone } from "@/lib/dates";
 import { upsertContractCalendarEvent } from "@/lib/google/calendar";
 import { nextPaymentFolio } from "@/lib/payments/folio";
-import { resolvePaymentStatus } from "@/lib/payments/status";
+import { recomputePaymentStatusOnEdit, resolvePaymentStatus } from "@/lib/payments/status";
 import { prisma } from "@/lib/prisma";
-import { Prisma, type PaymentStatus } from "@/generated/prisma/client";
+import { Prisma, type ContractStatus, type PaymentStatus } from "@/generated/prisma/client";
+
+import {
+  updateContractPayloadSchema,
+  type UpdateContractPayload,
+} from "../nuevo/schema";
 
 import {
   addNoteSchema,
@@ -379,4 +394,282 @@ export async function cancelContract(
   revalidatePath("/reportes");
 
   return { success: true };
+}
+
+export type UpdateContractResult =
+  | { error: string }
+  /** `changed: false` — identical payload: nothing written, nothing re-run. */
+  | { success: true; changed: boolean };
+
+interface LockedEditRow {
+  id: string;
+  contractStatus: ContractStatus;
+  paymentStatus: PaymentStatus;
+}
+
+type EditTransactionOutcome = { blocked: string } | { blocked?: undefined; changed: boolean };
+
+// Spec §8.2's copy for the shared pricing helper's failures.
+function editFailureMessage(failure: PriceOrderFailure): string {
+  switch (failure.kind) {
+    case "duplicate_package":
+      return "El pedido tiene paquetes duplicados.";
+    case "missing_package":
+      return "Uno o más paquetes del pedido ya no existen.";
+    case "inactive_package":
+    case "unpriced_package":
+      return `El paquete «${failure.packageName}» no está disponible en la lista de precios de este contrato.`;
+    case "over_max_quantity":
+      return `«${failure.packageName}» permite máximo ${failure.maxQuantity} por contrato.`;
+    case "missing_selection":
+      return `Falta elegir una opción para «${failure.serviceName}» en «${failure.packageName}».`;
+  }
+}
+
+function nullIfBlank(value: string): string | null {
+  return value.trim() || null;
+}
+
+function isoDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function wallClockTime(time: Date | null): string | null {
+  return time ? time.toISOString().slice(11, 16) : null;
+}
+
+/**
+ * edit-precontract — spec §5 editing rule + §8.2. The only writer that
+ * changes an EXISTING contract's lines and amounts after creation.
+ *
+ * Ownership is `scopeToOwner` (normal: own; super: all — so house-user
+ * contracts are super-only), checked outside the transaction like every
+ * sibling action. Everything else runs in ONE transaction behind the same
+ * `SELECT … FOR UPDATE` row lock as `registerPayment` / `cancelContract`, so a
+ * concurrent payment or cancellation serializes against the edit and the
+ * editability rule is re-checked on the row as it is NOW (spec S1.6).
+ *
+ * Post-commit (fail-open): image → Drive overwrite in place → Calendar via
+ * `runContractEditPipeline`. Never email/WhatsApp.
+ */
+export async function updateContract(input: UpdateContractPayload): Promise<UpdateContractResult> {
+  const session = await requireSession();
+
+  const parsed = updateContractPayloadSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
+  }
+  const data = parsed.data;
+
+  const db = scopeToOwner(session);
+  const owned = await db.contract.findUnique({ where: { id: data.contractId }, select: { id: true } });
+  if (!owned) {
+    return { error: "Contrato no encontrado." };
+  }
+
+  let outcome: EditTransactionOutcome;
+  try {
+    outcome = await prisma.$transaction(async (tx): Promise<EditTransactionOutcome> => {
+      const [locked] = await tx.$queryRaw<LockedEditRow[]>(Prisma.sql`
+        SELECT id,
+               contract_status AS "contractStatus",
+               payment_status  AS "paymentStatus"
+        FROM contracts
+        WHERE id = ${data.contractId}
+        FOR UPDATE
+      `);
+      if (!locked) {
+        throw new ContractRowNotFoundError();
+      }
+
+      const block = contractEditBlock(locked.contractStatus, locked.paymentStatus);
+      if (block) {
+        return { blocked: CONTRACT_EDIT_BLOCK_MESSAGE[block] };
+      }
+
+      // Read AFTER the lock is held: a concurrent edit has fully committed by
+      // now, so these are the lines/selections the new ones are matched to.
+      const current = await tx.contract.findUniqueOrThrow({
+        where: { id: data.contractId },
+        include: { contractPackages: true, contractServiceSelections: true },
+      });
+
+      const priced = await priceOrder(tx, {
+        priceListId: current.priceListId,
+        orderLines: data.orderLines,
+        serviceSelections: data.serviceSelections,
+        keptLines: current.contractPackages.map((line) => ({
+          packageId: line.packageId,
+          nameSnapshot: line.nameSnapshot,
+          priceSnapshot: Number(line.priceSnapshot),
+          quantity: line.quantity,
+        })),
+      });
+      if (!priced.ok) {
+        return { blocked: editFailureMessage(priced.failure) };
+      }
+
+      const total = priced.subtotal - (data.discount ?? 0) + (data.extraCharge ?? 0);
+      const totalCents = Math.round(total * 100);
+      const depositCents = Math.round(data.deposit * 100);
+
+      const { _sum } = await tx.payment.aggregate({
+        where: { contractId: data.contractId },
+        _sum: { amount: true },
+      });
+      const totalPaid = Number(_sum.amount ?? 0);
+
+      if (totalCents < Math.round(totalPaid * 100)) {
+        return {
+          blocked: `El nuevo total (${formatMoney(total)}) no puede ser menor a lo ya cobrado (${formatMoney(totalPaid)}).`,
+        };
+      }
+      // Deposit lock (spec R5): once any payment moved the status off
+      // `pending`, the deposit is history, not a proposal.
+      if (locked.paymentStatus !== "pending") {
+        if (depositCents !== toCentsOrNull(current.deposit)) {
+          return { blocked: "El anticipo ya fue cobrado y no se puede modificar." };
+        }
+      } else if (depositCents > totalCents) {
+        return { blocked: "El anticipo no puede ser mayor al total." };
+      }
+
+      const { contractData } = data;
+      const next = {
+        clientName: contractData.clientName,
+        clientPhone: nullIfBlank(contractData.clientPhone),
+        clientMobile: nullIfBlank(contractData.clientMobile),
+        clientEmail: nullIfBlank(contractData.clientEmail),
+        clientAddress: nullIfBlank(contractData.clientAddress),
+        eventType: contractData.eventType,
+        celebrated: nullIfBlank(contractData.celebrated),
+        eventDate: new Date(`${contractData.eventDate}T00:00:00.000Z`),
+        eventTime: contractData.eventTime.trim()
+          ? new Date(`1970-01-01T${contractData.eventTime}:00.000Z`)
+          : null,
+        placeName: nullIfBlank(contractData.placeName),
+        placeAddress: nullIfBlank(contractData.placeAddress),
+      };
+
+      const before: EditableContractState = {
+        clientName: current.clientName,
+        clientPhone: current.clientPhone,
+        clientMobile: current.clientMobile,
+        clientEmail: current.clientEmail,
+        clientAddress: current.clientAddress,
+        eventType: current.eventType,
+        celebrated: current.celebrated,
+        eventDate: isoDate(current.eventDate),
+        eventTime: wallClockTime(current.eventTime),
+        placeName: current.placeName,
+        placeAddress: current.placeAddress,
+        lines: Object.fromEntries(current.contractPackages.map((line) => [line.packageId, line.quantity])),
+        selections: Object.fromEntries(
+          current.contractServiceSelections.map((selection) => [selection.serviceId, selection.selectedOption])
+        ),
+        discountCents: toCentsOrNull(current.discount),
+        extraChargeCents: toCentsOrNull(current.extraCharge),
+        depositCents: toCentsOrNull(current.deposit) ?? 0,
+      };
+      const after: EditableContractState = {
+        ...next,
+        eventDate: isoDate(next.eventDate),
+        eventTime: wallClockTime(next.eventTime),
+        lines: Object.fromEntries(priced.lines.map((line) => [line.packageId, line.quantity])),
+        selections: Object.fromEntries(
+          priced.selections.map((selection) => [selection.serviceId, selection.selectedOption])
+        ),
+        discountCents: toCentsOrNull(data.discount),
+        extraChargeCents: toCentsOrNull(data.extraCharge),
+        depositCents,
+      };
+
+      const changes = describeContractEditChanges(before, after);
+      // Spec R11/S11.2: an identical payload writes nothing at all — no Note,
+      // no flag reset, no regeneration.
+      if (changes.length === 0) {
+        return { changed: false };
+      }
+
+      const nextPaymentStatus = recomputePaymentStatusOnEdit({
+        currentStatus: locked.paymentStatus,
+        totalPaid,
+        deposit: data.deposit,
+        total,
+      });
+      // Same promotion rule as `registerPayment`; never a regression.
+      const confirms = locked.contractStatus === "pre_contract" && nextPaymentStatus !== "pending";
+
+      // Lines and selections are rewritten in full; kept lines carry their
+      // original snapshot (priceOrder already resolved it), so nothing a
+      // client agreed to is re-priced.
+      await tx.contractServiceSelection.deleteMany({ where: { contractId: data.contractId } });
+      await tx.contractPackage.deleteMany({ where: { contractId: data.contractId } });
+      await tx.contractPackage.createMany({
+        data: priced.lines.map(({ packageId, nameSnapshot, priceSnapshot, quantity }) => ({
+          contractId: data.contractId,
+          packageId,
+          nameSnapshot,
+          priceSnapshot,
+          quantity,
+        })),
+      });
+      if (priced.selections.length > 0) {
+        await tx.contractServiceSelection.createMany({
+          data: priced.selections.map((selection) => ({ ...selection, contractId: data.contractId })),
+        });
+      }
+
+      await tx.contract.update({
+        where: { id: data.contractId },
+        data: {
+          ...next,
+          discount: data.discount,
+          extraCharge: data.extraCharge,
+          subtotal: priced.subtotal,
+          total,
+          deposit: data.deposit,
+          balance: total - data.deposit,
+          paymentStatus: nextPaymentStatus,
+          ...(confirms ? { contractStatus: "confirmed" as const } : {}),
+          // The generated image, the Drive files and the Calendar event all
+          // show the OLD data now; the post-commit pipeline flips each back.
+          // `emailSent` is left alone: nothing is re-sent automatically.
+          imageGenerated: false,
+          driveUploaded: false,
+          calendarCreated: false,
+        },
+      });
+
+      // Same snapshot-the-author's-name discipline as `cancelContract`.
+      await tx.note.create({
+        data: {
+          contractId: data.contractId,
+          userId: session.user.id,
+          text: `Contrato editado por ${session.user.name ?? "un usuario"}: ${changes.join(", ")}`,
+        },
+      });
+
+      return { changed: true };
+    });
+  } catch (error: unknown) {
+    if (error instanceof ContractRowNotFoundError) {
+      return { error: "Contrato no encontrado." };
+    }
+    throw error;
+  }
+
+  if (outcome.blocked !== undefined) {
+    return { error: outcome.blocked };
+  }
+
+  if (outcome.changed) {
+    await runContractEditPipeline(data.contractId);
+  }
+
+  revalidatePath(`/contratos/${data.contractId}`);
+  revalidatePath("/contratos");
+  revalidatePath("/calendario");
+
+  return { success: true, changed: outcome.changed };
 }

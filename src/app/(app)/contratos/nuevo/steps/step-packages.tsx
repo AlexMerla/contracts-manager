@@ -194,6 +194,11 @@ function PackageCard({ pkg, priceListId, line, onAdd, onRemove, onSetQuantity }:
           emptyLabel="Sin precio en esta lista"
           className="font-heading text-lg font-semibold"
         />
+        {pkg.priceLocked && (
+          <p className="text-xs text-muted-foreground">
+            Precio pactado en el contrato — no cambia aunque el catálogo sí.
+          </p>
+        )}
 
         <div className="flex flex-wrap gap-1.5">
           <Badge variant="secondary">{pkg.categoryName}</Badge>

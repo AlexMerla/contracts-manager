@@ -286,6 +286,86 @@ describe("createContract", () => {
     expect((result as { error: string }).error).toMatch(/no tiene precio en la lista seleccionada/);
   });
 
+  // edit-precontract — characterization of the pricing/validation loop BEFORE
+  // it is extracted into `@/lib/contracts/price-order`. Pins the exact copy
+  // and check order so the extraction is provably behavior-preserving.
+  it("characterization: exact rejection copy for every pricing/validation failure", async () => {
+    const inactivePackageId = randomUUID();
+    await prisma.package.create({
+      data: { id: inactivePackageId, name: "Paquete inactivo", categoryId, active: false },
+    });
+    await prisma.packagePrice.create({ data: { packageId: inactivePackageId, priceListId, price: 10 } });
+
+    async function errorFor(patch: Partial<CreateContractPayload>): Promise<string | undefined> {
+      const result = await createContract({ ...basePayload(), ...patch });
+      return "error" in result ? result.error : undefined;
+    }
+
+    try {
+      expect(
+        await errorFor({
+          orderLines: [
+            { packageId: packageNoServiceId, quantity: 1 },
+            { packageId: packageNoServiceId, quantity: 1 },
+          ],
+          serviceSelections: [],
+        })
+      ).toBe("El pedido tiene paquetes duplicados.");
+      expect(
+        await errorFor({ orderLines: [{ packageId: randomUUID(), quantity: 1 }], serviceSelections: [] })
+      ).toBe("Uno o más paquetes del pedido ya no existen.");
+      expect(
+        await errorFor({ orderLines: [{ packageId: inactivePackageId, quantity: 1 }], serviceSelections: [] })
+      ).toBe('El paquete "Paquete inactivo" ya no está activo.');
+      expect(await errorFor({ orderLines: [{ packageId: packageWithServiceId, quantity: 4 }] })).toBe(
+        'La cantidad de "Paquete con servicio" (4) excede el máximo permitido (3).'
+      );
+      // maxQuantity null defaults to 1.
+      expect(
+        await errorFor({ orderLines: [{ packageId: packageNoServiceId, quantity: 2 }], serviceSelections: [] })
+      ).toBe('La cantidad de "Paquete simple" (2) excede el máximo permitido (1).');
+      expect(
+        await errorFor({ orderLines: [{ packageId: packageNoPriceId, quantity: 1 }], serviceSelections: [] })
+      ).toBe('El paquete "Paquete sin precio" no tiene precio en la lista seleccionada.');
+      expect(await errorFor({ serviceSelections: [{ serviceId, selectedOption: "Opción Z" }] })).toBe(
+        'Falta elegir una opción para el servicio "Servicio con opciones".'
+      );
+    } finally {
+      await prisma.packagePrice.deleteMany({ where: { packageId: inactivePackageId } });
+      await prisma.package.delete({ where: { id: inactivePackageId } });
+    }
+  });
+
+  it("characterization: discount/extra charge feed total and balance; only required selections are stored", async () => {
+    const result = await createContract({
+      ...basePayload(),
+      // A selection for a service no package in the order requires is dropped.
+      serviceSelections: [
+        { serviceId, selectedOption: "Opción B" },
+        { serviceId: randomUUID(), selectedOption: "Ignorada" },
+      ],
+      discount: 300,
+      extraCharge: 50,
+      deposit: 700,
+    });
+    expect("success" in result && result.success).toBe(true);
+    const { contractId } = result as Extract<CreateContractResult, { success: true }>;
+    createdContractIds.push(contractId);
+
+    const contract = await prisma.contract.findUniqueOrThrow({
+      where: { id: contractId },
+      include: { contractServiceSelections: true },
+    });
+    expect(Number(contract.subtotal)).toBe(2500);
+    expect(Number(contract.discount)).toBe(300);
+    expect(Number(contract.extraCharge)).toBe(50);
+    expect(Number(contract.total)).toBe(2250);
+    expect(Number(contract.balance)).toBe(1550);
+    expect(contract.contractServiceSelections.map((s) => [s.serviceId, s.selectedOption])).toEqual([
+      [serviceId, "Opción B"],
+    ]);
+  });
+
   it("ignores a spoofed createdById and attributes the contract to the real session user", async () => {
     // The schema has no `createdById` field at all, so a well-typed caller
     // can't even express this — this simulates a raw request that adds the

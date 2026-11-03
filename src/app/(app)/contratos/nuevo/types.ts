@@ -33,6 +33,10 @@ export interface CatalogPackage {
   /** Resolved price per price list id — a package with no row in
    * `package_prices` for a given list is simply absent from this map. */
   pricesByPriceListId: Record<string, number>;
+  /** edit-precontract: a line the contract already has. Its entry in
+   * `pricesByPriceListId` for the contract's list is the `price_snapshot`, not
+   * the live price (spec §6.5) — the server prices it the same way. */
+  priceLocked?: boolean;
 }
 
 export interface CatalogCategory {
@@ -87,4 +91,22 @@ export interface AmountsValues {
   discount: number | null;
   extraCharge: number | null;
   deposit: number;
+}
+
+/** edit-precontract (spec §8.2) — everything the wizard needs to open on an
+ * existing contract instead of a blank order. Built by
+ * `/contratos/[id]/editar` from the contract's OWN rows. */
+export interface WizardEditMode {
+  contractId: string;
+  orderLines: OrderLine[];
+  /** serviceId → option, already filtered to options that are still live. */
+  serviceSelections: Record<string, string>;
+  contractData: ContractDataValues;
+  discount: number | null;
+  extraCharge: number | null;
+  deposit: number;
+  /** `paymentStatus !== "pending"` — the deposit was already collected. */
+  depositLocked: boolean;
+  /** Live SUM of payments; the new total may not go below it. */
+  totalPaid: number;
 }

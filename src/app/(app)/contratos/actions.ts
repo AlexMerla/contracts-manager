@@ -10,6 +10,7 @@ import { getContractImageBuffers } from "@/lib/contract-template/get-contract-im
 import { runContractDeliveryPipeline } from "@/lib/contracts/delivery-pipeline";
 import type { ContractDeliveryStepResult } from "@/lib/contracts/delivery-step";
 import { isFolioCollision, nextFolio } from "@/lib/contracts/folio";
+import { priceOrder, type PriceOrderFailure } from "@/lib/contracts/price-order";
 import { sendContractEmail } from "@/lib/email/contract-email";
 import { upsertContractCalendarEvent } from "@/lib/google/calendar";
 import { uploadContractImageToDrive } from "@/lib/google/drive";
@@ -34,6 +35,25 @@ async function requireSession() {
 
 const MAX_FOLIO_ATTEMPTS = 3;
 
+// The internal flow's copy, unchanged by the extraction (pinned by the
+// characterization tests in contratos-actions.test.ts).
+function createFailureMessage(failure: PriceOrderFailure): string {
+  switch (failure.kind) {
+    case "duplicate_package":
+      return "El pedido tiene paquetes duplicados.";
+    case "missing_package":
+      return "Uno o más paquetes del pedido ya no existen.";
+    case "inactive_package":
+      return `El paquete "${failure.packageName}" ya no está activo.`;
+    case "over_max_quantity":
+      return `La cantidad de "${failure.packageName}" (${failure.quantity}) excede el máximo permitido (${failure.maxQuantity}).`;
+    case "unpriced_package":
+      return `El paquete "${failure.packageName}" no tiene precio en la lista seleccionada.`;
+    case "missing_selection":
+      return `Falta elegir una opción para el servicio "${failure.serviceName}".`;
+  }
+}
+
 // Spec §8 step 6 / sprint-04 tasks 6-7 — the confirm-and-create endpoint.
 // Re-validates and recomputes everything server-side; nothing from the
 // client payload is trusted as final except the *choices* (which packages,
@@ -53,102 +73,32 @@ export async function createContract(
 
   // `scopeToOwner` deliberately does not intercept `create`/`createMany`
   // (see src/lib/authorization.ts) — this whole action only ever creates
-  // rows (never reads/updates/deletes an existing contract), and `Package`
-  // isn't an owner-scoped model at all, so the extension would be a no-op
-  // here in every case it matters. It's used instead by the list/detail
-  // pages, which do real scoped reads. Using it here anyway would also hit
-  // a real TypeScript limitation: `$transaction`'s overloaded signature
-  // doesn't resolve cleanly against `scopeToOwner`'s `PrismaClient |
-  // ExtendedClient` return type.
-  const packageIds = data.orderLines.map((line) => line.packageId);
-  const uniquePackageIds = new Set(packageIds);
-  if (uniquePackageIds.size !== packageIds.length) {
-    return { error: "El pedido tiene paquetes duplicados." };
-  }
-
-  const packages = await prisma.package.findMany({
-    where: { id: { in: packageIds } },
-    include: {
-      packagePrices: { where: { priceListId: data.priceListId } },
-      packageServices: { include: { service: true } },
-      category: { select: { name: true } },
-    },
+  // rows, and `Package` isn't an owner-scoped model at all. Names, prices
+  // and the required-service set are resolved server-side by the shared
+  // `priceOrder` (edit-precontract extracted it; copy below is unchanged).
+  const priced = await priceOrder(prisma, {
+    priceListId: data.priceListId,
+    orderLines: data.orderLines,
+    serviceSelections: data.serviceSelections,
   });
-  const packageById = new Map(packages.map((pkg) => [pkg.id, pkg]));
-
-  let subtotal = 0;
-  const contractPackagesData: {
-    packageId: string;
-    nameSnapshot: string;
-    priceSnapshot: number;
-    quantity: number;
-  }[] = [];
-  // Services that actually require a selection, given the packages really
-  // in the order — recomputed server-side rather than trusting which
-  // services the client thought were required (sprint-04 task 3's rule,
-  // enforced again here per task 6's "re-validates ... server-side").
-  const requiredServices = new Map<string, { name: string; options: string[] }>();
-
-  for (const line of data.orderLines) {
-    const pkg = packageById.get(line.packageId);
-    if (!pkg) {
-      return { error: "Uno o más paquetes del pedido ya no existen." };
-    }
-    if (!pkg.active) {
-      return { error: `El paquete "${pkg.name}" ya no está activo.` };
-    }
-
-    const maxQuantity = pkg.maxQuantity ?? 1;
-    if (line.quantity > maxQuantity) {
-      return {
-        error: `La cantidad de "${pkg.name}" (${line.quantity}) excede el máximo permitido (${maxQuantity}).`,
-      };
-    }
-
-    const price = pkg.packagePrices[0]?.price;
-    if (price == null) {
-      return { error: `El paquete "${pkg.name}" no tiene precio en la lista seleccionada.` };
-    }
-
-    const unitPrice = Number(price);
-    subtotal += unitPrice * line.quantity;
-
-    contractPackagesData.push({
-      packageId: pkg.id,
-      nameSnapshot: pkg.name,
-      priceSnapshot: unitPrice,
-      quantity: line.quantity,
-    });
-
-    for (const { service } of pkg.packageServices) {
-      const options = Array.isArray(service.options) ? (service.options as string[]) : [];
-      if (options.length > 0) {
-        requiredServices.set(service.id, { name: service.name, options });
-      }
-    }
+  if (!priced.ok) {
+    return { error: createFailureMessage(priced.failure) };
   }
-
-  const selectionByServiceId = new Map(
-    data.serviceSelections.map((selection) => [selection.serviceId, selection.selectedOption])
+  const { subtotal, lines: contractPackageLines, selections: contractServiceSelectionsData } = priced;
+  const contractPackagesData = contractPackageLines.map(
+    ({ packageId, nameSnapshot, priceSnapshot, quantity }) => ({
+      packageId,
+      nameSnapshot,
+      priceSnapshot,
+      quantity,
+    })
   );
-  for (const [serviceId, { name, options }] of requiredServices) {
-    const selected = selectionByServiceId.get(serviceId);
-    if (!selected || !options.includes(selected)) {
-      return { error: `Falta elegir una opción para el servicio "${name}".` };
-    }
-  }
 
   const discount = data.discount ?? 0;
   const extraCharge = data.extraCharge ?? 0;
   const total = subtotal - discount + extraCharge;
   const balance = total - data.deposit;
   const viewerToken = randomUUID();
-
-  const contractServiceSelectionsData = Array.from(requiredServices.keys()).map((serviceId) => ({
-    serviceId,
-    // Presence and validity already checked above.
-    selectedOption: selectionByServiceId.get(serviceId) as string,
-  }));
 
   const { clientName, clientPhone, clientMobile, clientEmail, clientAddress, eventType, celebrated, eventDate, eventTime, placeName, placeAddress } =
     data.contractData;
@@ -230,10 +180,10 @@ export async function createContract(
           clientMobile: contract.clientMobile,
           placeName: contract.placeName,
           placeAddress: contract.placeAddress,
-          services: contractPackagesData.map((line) => ({
+          services: contractPackageLines.map((line) => ({
             name: line.nameSnapshot,
             quantity: line.quantity,
-            category: packageById.get(line.packageId)?.category.name ?? null,
+            category: line.categoryName,
           })),
           total,
           deposit: data.deposit,

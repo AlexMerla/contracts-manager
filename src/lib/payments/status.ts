@@ -6,9 +6,11 @@ export interface ResolvePaymentStatusArgs {
   previousStatus: PaymentStatus;
   /** Cumulative paid amount INCLUDING the payment currently being written. */
   totalPaid: number;
-  /** `contracts.deposit` — a creation-time snapshot, never recomputed. */
+  /** `contracts.deposit` — set at creation; changes only through
+   * `updateContract`, and only while `paymentStatus` is still `pending`. */
   deposit: number;
-  /** `contracts.total` — a creation-time snapshot, never recomputed. */
+  /** `contracts.total` — set at creation; recomputed only by `updateContract`
+   * (edit-precontract), never by a payment. */
   total: number;
 }
 
@@ -25,7 +27,8 @@ function toCents(amount: number): number {
  * Pure transition rule for `payments.paymentStatus` (spec §12.6 / sprint-08
  * domain: Payments, "ADDED: Payment Status Transition"). Framework- and
  * database-agnostic on purpose so it's testable without a transaction or a
- * live connection — `registerPayment` is the only caller, and always reads
+ * live connection — `registerPayment` is the only caller (an edit uses
+ * `recomputePaymentStatusOnEdit` below instead), and always reads
  * `previousStatus`/`totalPaid` from inside its own `$transaction`.
  *
  * Order of checks is load-bearing (design decision #4): `paid >= total` is
@@ -59,4 +62,47 @@ export function resolvePaymentStatus({
     return "pending";
   }
   return previousStatus === "pending" ? "deposit_paid" : "partial";
+}
+
+export interface RecomputePaymentStatusOnEditArgs {
+  /** The contract's `paymentStatus` read INSIDE the edit's row lock. */
+  currentStatus: PaymentStatus;
+  /** Live SUM of payments — unchanged by an edit. */
+  totalPaid: number;
+  /** The deposit AFTER the edit. */
+  deposit: number;
+  /** The total AFTER the edit. */
+  total: number;
+}
+
+/**
+ * edit-precontract (spec §8.2 step 4) — payment status after an EDIT, where no
+ * payment is being added. `resolvePaymentStatus` must NOT be reused: it reads
+ * "not pending before" as "a second payment just arrived" and would turn an
+ * untouched `deposit_paid` into `partial` on any edit.
+ *
+ *  - Nothing paid yet → status unchanged (an edit alone never confirms or
+ *    settles a contract — e.g. a total edited down to 0 with no payment).
+ *  - paid ≥ total → `paid_in_full`.
+ *  - from `pending`: paid ≥ deposit → `deposit_paid` (a lowered deposit that
+ *    the money already collected now covers), else `pending`.
+ *  - `deposit_paid` / `partial` are kept as they are — never regressed.
+ */
+export function recomputePaymentStatusOnEdit({
+  currentStatus,
+  totalPaid,
+  deposit,
+  total,
+}: RecomputePaymentStatusOnEditArgs): PaymentStatus {
+  const paidCents = toCents(totalPaid);
+  if (paidCents <= 0) {
+    return currentStatus;
+  }
+  if (paidCents >= toCents(total)) {
+    return "paid_in_full";
+  }
+  if (currentStatus === "pending") {
+    return paidCents >= toCents(deposit) ? "deposit_paid" : "pending";
+  }
+  return currentStatus;
 }

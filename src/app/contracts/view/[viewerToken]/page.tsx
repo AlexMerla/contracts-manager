@@ -31,6 +31,7 @@ const findViewerContract = cache(async (viewerToken: string) =>
       eventType: true,
       eventDate: true,
       contractStatus: true,
+      updatedAt: true,
     },
   })
 );
@@ -75,7 +76,7 @@ export default async function ContractViewerPage({ params }: ContractViewerPageP
     notFound();
   }
 
-  const imageUrl = contractViewerImagePath(viewerToken, clientImage.variant);
+  const imageUrl = contractViewerImagePath(viewerToken, clientImage.variant, contract.updatedAt);
 
   return (
     <main className="mx-auto flex w-full max-w-[920px] flex-col gap-6 px-5 py-10">

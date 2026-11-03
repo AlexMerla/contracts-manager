@@ -44,6 +44,13 @@ interface StepConfirmProps {
   /** `null` hands the deposit back to the threshold rule — clearing the field
    * must not pin the override at 0. */
   onDepositChange: (value: number | null) => void;
+  /** edit-precontract: present only when editing an existing contract. */
+  edit?: {
+    /** The deposit was already collected — shown read-only (spec R5). */
+    depositLocked: boolean;
+    /** Live SUM of payments; the new total may not go below it (spec R4). */
+    totalPaid: number;
+  };
   submitError: string | null;
   isSubmitting: boolean;
   onBack: () => void;
@@ -82,6 +89,7 @@ export function StepConfirm({
   onDiscountChange,
   onExtraChargeChange,
   onDepositChange,
+  edit,
   submitError,
   isSubmitting,
   onBack,
@@ -147,6 +155,16 @@ export function StepConfirm({
   const depositDisplay = depositRaw ?? String(deposit);
   const depositOverTotal = deposit > total;
   const isPaidInFull = total > 0 && deposit >= total;
+
+  // Edit-only guards, mirrored from `updateContract` so the button is
+  // disabled before the server would refuse.
+  const isEditing = edit != null;
+  const depositLocked = edit?.depositLocked ?? false;
+  const totalPaid = edit?.totalPaid ?? 0;
+  const totalBelowPaid = isEditing && Math.round(total * 100) < Math.round(totalPaid * 100);
+  const editDepositOverTotal = isEditing && !depositLocked && depositOverTotal;
+  const settlesOnSave = isEditing && totalPaid > 0 && !totalBelowPaid && totalPaid >= total;
+  const blocksSubmit = hasIncompleteAdjustment || totalBelowPaid || editDepositOverTotal;
 
   return (
     <div className="flex flex-col gap-6">
@@ -266,14 +284,22 @@ export function StepConfirm({
         <CardHeader>
           <CardTitle>Anticipo</CardTitle>
           <CardDescription>
-            El sistema propone el anticipo según la regla vigente. Puede
-            escribir otro monto o usar un atajo.
+            {depositLocked
+              ? "El anticipo ya fue cobrado y no se puede modificar."
+              : isEditing
+                ? "Anticipo acordado en el contrato. Mientras no se haya cobrado, puede ajustarlo."
+                : "El sistema propone el anticipo según la regla vigente. Puede escribir otro monto o usar un atajo."}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          <Field>
+          <Field data-disabled={depositLocked}>
             <FieldLabel htmlFor="deposit">Monto del anticipo</FieldLabel>
-            <MoneyInput id="deposit" value={depositDisplay} onChange={applyDepositRaw} />
+            <MoneyInput
+              id="deposit"
+              value={depositDisplay}
+              onChange={applyDepositRaw}
+              disabled={depositLocked}
+            />
           </Field>
 
           {/* One-shot fills, NOT a persistent selection: they preload the
@@ -287,7 +313,7 @@ export function StepConfirm({
                 type="button"
                 variant="outline"
                 size="sm"
-                disabled={total <= 0}
+                disabled={total <= 0 || depositLocked}
                 onClick={() => applyDepositRaw(String(roundToCents(total * preset.fraction)))}
               >
                 {preset.label}
@@ -308,6 +334,12 @@ export function StepConfirm({
               <span>Saldo</span>
               <Money amount={balance} className="font-heading text-lg" />
             </div>
+            {isEditing && (
+              <div className="flex items-center justify-between text-sm text-muted-foreground">
+                <span>Ya cobrado</span>
+                <Money amount={totalPaid} />
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -327,7 +359,34 @@ export function StepConfirm({
         />
       )}
 
-      {depositOverTotal && (
+      {totalBelowPaid && (
+        <Alert
+          tone="danger"
+          icon={CircleAlert}
+          title="El nuevo total no puede ser menor a lo ya cobrado."
+          description="Ajuste los paquetes, el descuento o el cargo extra para que el total cubra los pagos registrados."
+        />
+      )}
+
+      {editDepositOverTotal && (
+        <Alert
+          tone="danger"
+          icon={CircleAlert}
+          title="El anticipo no puede ser mayor al total."
+          description="Reduzca el anticipo para poder guardar los cambios."
+        />
+      )}
+
+      {settlesOnSave && (
+        <Alert
+          tone="info"
+          icon={CheckCircle2}
+          title="Con este total el contrato queda liquidado."
+          description="Lo ya cobrado cubre el nuevo total. Después de guardar, el contrato ya no se podrá editar."
+        />
+      )}
+
+      {depositOverTotal && !isEditing && (
         <Alert
           tone="warning"
           icon={AlertTriangle}
@@ -336,7 +395,7 @@ export function StepConfirm({
         />
       )}
 
-      {isPaidInFull && !depositOverTotal && (
+      {isPaidInFull && !depositOverTotal && !isEditing && (
         <Alert
           tone="success"
           icon={CheckCircle2}
@@ -349,7 +408,7 @@ export function StepConfirm({
         <Alert
           tone="danger"
           icon={CircleAlert}
-          title="No se pudo crear el contrato."
+          title={isEditing ? "No se pudieron guardar los cambios." : "No se pudo crear el contrato."}
           description={submitError}
         />
       )}
@@ -360,14 +419,21 @@ export function StepConfirm({
         </Button>
         <Button
           type="button"
-          disabled={isSubmitting || hasIncompleteAdjustment}
+          disabled={isSubmitting || blocksSubmit}
           onClick={onConfirm}
         >
-          {isSubmitting ? "Creando…" : "Crear contrato"}
+          {submitLabel(isEditing, isSubmitting)}
         </Button>
       </WizardStepFooter>
     </div>
   );
+}
+
+function submitLabel(isEditing: boolean, isSubmitting: boolean): string {
+  if (isEditing) {
+    return isSubmitting ? "Guardando…" : "Guardar cambios";
+  }
+  return isSubmitting ? "Creando…" : "Crear contrato";
 }
 
 // Presets are a percentage of a peso total, so they can land on fractions of

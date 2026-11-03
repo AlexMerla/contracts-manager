@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resolvePaymentStatus } from "./status";
+import { recomputePaymentStatusOnEdit, resolvePaymentStatus } from "./status";
 
 describe("resolvePaymentStatus", () => {
   it("stays pending while cumulative paid is below the deposit", () => {
@@ -61,5 +61,45 @@ describe("resolvePaymentStatus", () => {
     expect(
       resolvePaymentStatus({ previousStatus: "partial", totalPaid: 0.1 + 0.2, deposit: 0.1, total: 0.3 })
     ).toBe("paid_in_full");
+  });
+});
+
+// edit-precontract (spec R6) — an edit adds no payment, so it must never read
+// as "a second payment arrived".
+describe("recomputePaymentStatusOnEdit", () => {
+  it("keeps deposit_paid when the total is raised and nothing new was paid (not partial)", () => {
+    expect(
+      recomputePaymentStatusOnEdit({ currentStatus: "deposit_paid", totalPaid: 1000, deposit: 1000, total: 9000 })
+    ).toBe("deposit_paid");
+  });
+
+  it("keeps partial when the total is raised", () => {
+    expect(
+      recomputePaymentStatusOnEdit({ currentStatus: "partial", totalPaid: 3000, deposit: 1000, total: 9000 })
+    ).toBe("partial");
+  });
+
+  it("moves pending -> deposit_paid when a lowered deposit is already covered", () => {
+    expect(
+      recomputePaymentStatusOnEdit({ currentStatus: "pending", totalPaid: 1000, deposit: 1000, total: 5000 })
+    ).toBe("deposit_paid");
+  });
+
+  it("stays pending while paid is still below the (edited) deposit", () => {
+    expect(
+      recomputePaymentStatusOnEdit({ currentStatus: "pending", totalPaid: 500, deposit: 1000, total: 5000 })
+    ).toBe("pending");
+  });
+
+  it("settles to paid_in_full when the total is lowered to exactly what was paid", () => {
+    expect(
+      recomputePaymentStatusOnEdit({ currentStatus: "partial", totalPaid: 5000, deposit: 1000, total: 5000 })
+    ).toBe("paid_in_full");
+  });
+
+  it("never changes the status of a contract with no payments, even at total 0 or deposit 0", () => {
+    expect(
+      recomputePaymentStatusOnEdit({ currentStatus: "pending", totalPaid: 0, deposit: 0, total: 0 })
+    ).toBe("pending");
   });
 });

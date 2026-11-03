@@ -20,6 +20,9 @@ import type { CatalogPriceList } from "../types";
 interface StepPriceListProps {
   priceLists: CatalogPriceList[];
   priceListId: string;
+  /** edit-precontract: an existing contract's list is immutable (spec R3) —
+   * shown, never changeable. */
+  readOnly?: boolean;
   onChange: (priceListId: string) => void;
   onNext: () => void;
 }
@@ -37,6 +40,7 @@ interface StepPriceListProps {
 export function StepPriceList({
   priceLists,
   priceListId,
+  readOnly = false,
   onChange,
   onNext,
 }: StepPriceListProps) {
@@ -46,8 +50,9 @@ export function StepPriceList({
         <CardHeader>
           <CardTitle>Lista de precios</CardTitle>
           <CardDescription>
-            Elija la lista de precios para este contrato. Los precios del paso
-            siguiente se calculan según la lista seleccionada aquí.
+            {readOnly
+              ? "La lista de precios de un contrato existente no se puede cambiar. Los paquetes nuevos toman su precio de esta lista."
+              : "Elija la lista de precios para este contrato. Los precios del paso siguiente se calculan según la lista seleccionada aquí."}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -62,17 +67,21 @@ export function StepPriceList({
               {priceLists.map((priceList) => {
                 const isSelected = priceList.id === priceListId;
                 return (
-                  <label key={priceList.id} className="block cursor-pointer">
+                  <label
+                    key={priceList.id}
+                    className={cn("block", readOnly ? "cursor-default" : "cursor-pointer")}
+                  >
                     <input
                       type="radio"
                       name="priceListId"
                       value={priceList.id}
                       checked={isSelected}
+                      disabled={readOnly}
                       onChange={() => onChange(priceList.id)}
                       className="peer sr-only"
                     />
                     <Card
-                      interactive
+                      interactive={!readOnly}
                       className={cn(
                         "h-full peer-focus-visible:ring-3 peer-focus-visible:ring-ring/50",
                         isSelected && "ring-2 ring-foreground"

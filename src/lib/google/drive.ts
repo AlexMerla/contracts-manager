@@ -131,32 +131,6 @@ export function buildDriveMultipartBody(params: {
   return Buffer.concat([Buffer.from(head, "utf8"), params.content, Buffer.from(tail, "utf8")]);
 }
 
-/**
- * Uploads a contract's PAIR of images (official contract + pre-contract) to
- * Drive and records `driveFileId` / `preContractDriveFileId` /
- * `driveUploaded`. Never throws for an API failure (spec §4.2).
- *
- * Idempotency, per spec §4.2 step 5 ("check the relevant ID/status column
- * before acting"), is now PER FILE — the id column itself is the completion
- * signal for that exact file:
- *  1. Both ids already present → no-op, returns success. Deliberately no
- *     round-trip to verify the files still exist in Drive: that would cost an
- *     API call on every retry to defend against a human deleting a file out
- *     from under us, which is not a case this step owns.
- *  2. Whichever id is still missing gets uploaded — a retry never re-sends a
- *     file whose id already exists, so "un reintento no debe volver a
- *     subirlo" holds per file, not just for the pair as a whole.
- *  3. Both ids present but the flag still `false` (a crash between the 2nd
- *     upload and the flag write) → flip the flag alone, no upload at all.
- *
- * A legacy row from before this change (flag `true`, `driveFileId` set,
- * `preContractDriveFileId` null) naturally uploads only the missing
- * pre-contract on the next retry and leaves its old `<folio> - <cliente>.jpg`
- * file untouched — no backfill migration needed.
- *
- * @param images the pair already produced by the confirm flow; omitted by the
- * manual retry action, which regenerates both from stored data instead.
- */
 type ContractDriveFileKind = "contract" | "preContract";
 
 /** `Contrato<folio>.jpg` / `Precontrato<folio>.jpg` — no client name (product
@@ -198,6 +172,55 @@ async function createDriveFile(params: {
   return { ok: true, data: uploaded.data.id };
 }
 
+/** Overwrites an existing file's bytes, keeping its id, name and parents
+ * (`PATCH /upload/drive/v3/files/{id}?uploadType=media`). Works under the
+ * `drive.file` scope because every file it targets was created by this app. */
+async function replaceDriveFileContent(params: {
+  fileId: string;
+  content: Buffer;
+  operation: string;
+}): Promise<GoogleApiResult<string>> {
+  const replaced = await googleApiFetch<DriveFile>({
+    url: `${DRIVE_UPLOAD_ENDPOINT}/${encodeURIComponent(params.fileId)}?uploadType=media&fields=id`,
+    method: "PATCH",
+    headers: { "Content-Type": CONTRACT_IMAGE_MIME_TYPE },
+    body: new Uint8Array(params.content),
+    operation: params.operation,
+  });
+  if (!replaced.ok) {
+    return replaced;
+  }
+  return { ok: true, data: replaced.data.id };
+}
+
+/**
+ * Syncs a contract's PAIR of images (official contract + pre-contract) to
+ * Drive and records `driveFileId` / `preContractDriveFileId` /
+ * `driveUploaded`. Never throws for an API failure (spec §4.2).
+ *
+ * `driveUploaded` is the "Drive matches the stored data" signal; the id
+ * columns only say WHICH file holds each image. Per file:
+ *  - no id yet → create it (multipart upload) and persist the id at once, so
+ *    a failure on the second file never re-creates the first;
+ *  - id present → overwrite its bytes IN PLACE (media PATCH, same id) — so
+ *    the Calendar attachment link and the detail page's "Abrir" links stay
+ *    valid. A 404 (the file was deleted by hand) falls back to create and
+ *    stores the new id.
+ *
+ * Idempotency (spec §4.2 step 5): `driveUploaded && both ids` → no-op, no API
+ * call. Everything else is safe to re-run: create happens only for a missing
+ * id, and an overwrite can never produce a duplicate file.
+ *
+ * edit-precontract: `updateContract` resets `driveUploaded` to `false`, so
+ * the post-edit sync — and, if that fails, the manual "Reintentar" — overwrite
+ * the stale files instead of the old "both ids present → just flip the flag"
+ * shortcut, which would have silently left the pre-edit images in Drive. The
+ * rare crash-between-upload-and-flag case now re-sends identical bytes to the
+ * same ids — harmless, and the price of not needing a "stale" column.
+ *
+ * @param images the pair already rendered by the caller; omitted by the
+ * manual retry action, which regenerates both from stored data instead.
+ */
 export async function uploadContractImageToDrive(
   contractId: string,
   images?: ContractImagePair
@@ -219,23 +242,6 @@ export async function uploadContractImageToDrive(
     return { ok: true };
   }
 
-  const pending: ContractDriveFileKind[] = [];
-  if (!contract.driveFileId) {
-    pending.push("contract");
-  }
-  if (!contract.preContractDriveFileId) {
-    pending.push("preContract");
-  }
-
-  // Both files exist, only the flag is behind (crash between 2nd upload and flag write).
-  if (pending.length === 0) {
-    await prisma.contract.update({
-      where: { id: contractId },
-      data: { driveUploaded: true },
-    });
-    return { ok: true };
-  }
-
   let pair: ContractImagePair;
   try {
     pair = images ?? (await getContractImageBuffers(contractId));
@@ -246,29 +252,61 @@ export async function uploadContractImageToDrive(
     };
   }
 
-  const folder = await resolveFolderId();
-  if (!folder.ok) {
-    return { ok: false, message: folder.message };
+  const files: { kind: ContractDriveFileKind; fileId: string | null }[] = [
+    { kind: "contract", fileId: contract.driveFileId },
+    { kind: "preContract", fileId: contract.preContractDriveFileId },
+  ];
+
+  // Resolved lazily: a pure overwrite of two existing files never needs it.
+  let folderId: string | null = null;
+  async function ensureFolder(): Promise<GoogleApiResult<string>> {
+    if (folderId) {
+      return { ok: true, data: folderId };
+    }
+    const folder = await resolveFolderId();
+    if (folder.ok) {
+      folderId = folder.data;
+    }
+    return folder;
   }
 
-  for (const kind of pending) {
+  for (const { kind, fileId } of files) {
     const isOfficial = kind === "contract";
+    const content = isOfficial ? pair.contract : pair.preContract;
+
+    if (fileId) {
+      const replaced = await replaceDriveFileContent({
+        fileId,
+        content,
+        operation: isOfficial ? "actualizar el contrato en Drive" : "actualizar el precontrato en Drive",
+      });
+      if (replaced.ok) {
+        continue;
+      }
+      // Anything but "the file is gone" is a real failure; leave the id alone.
+      if (replaced.reason !== "request_failed" || replaced.status !== 404) {
+        return { ok: false, message: replaced.message };
+      }
+    }
+
+    const folder = await ensureFolder();
+    if (!folder.ok) {
+      return { ok: false, message: folder.message };
+    }
     const created = await createDriveFile({
       name: contractDriveFileName(kind, contract.folio),
       folderId: folder.data,
-      content: isOfficial ? pair.contract : pair.preContract,
+      content,
       operation: isOfficial ? "subir el contrato a Drive" : "subir el precontrato a Drive",
     });
     if (!created.ok) {
       return { ok: false, message: created.message };
     }
 
-    // Persisted per file: if the NEXT upload fails, the retry must know this one is done.
+    // Persisted per file: if the NEXT upload fails, the retry must know this one exists.
     await prisma.contract.update({
       where: { id: contractId },
-      data: isOfficial
-        ? { driveFileId: created.data }
-        : { preContractDriveFileId: created.data },
+      data: isOfficial ? { driveFileId: created.data } : { preContractDriveFileId: created.data },
     });
   }
 
