@@ -104,7 +104,7 @@ Two roles: `super` and `normal`. Enforce via a shared authorization check (e.g.,
 |---|---|---|---|
 | Contracts — list/view | **No** — only the client's own `viewer_token` link (§10) | Only contracts where `createdById = self` | All |
 | Contracts — create | **Pre-contract only**, via `/precontrato` (§8.1): price list and deposit server-derived, `discount`/`extra_charge` always null, owned by the "Cliente (web)" house user | Yes | Yes |
-| Contracts — edit | **No** | Only contracts where `createdById = self` | All |
+| Contracts — edit | **No** | Only contracts where `createdById = self`, while editable (see below) | Any contract, while editable |
 | Contracts — cancel | **No** | **No** | Yes |
 | Payments — create/view | **No** | Only on contracts where `createdById = self` | On any contract |
 | Notes — create/view | **No** | Only on contracts where `createdById = self` | On any contract |
@@ -116,6 +116,8 @@ Two roles: `super` and `normal`. Enforce via a shared authorization check (e.g.,
 | Google Master connection | **No** | Read-only status banner | Read status + reconnect action |
 
 Implementation note: every query for `contracts`, `payments`, `notes` on behalf of a `normal` user must include `WHERE createdById = currentUser.id` at the data-access layer, not only hidden in the UI. The anonymous actor has no session, so `requireRole`/`scopeToOwner` cannot express its limits: they are enforced by the *shape of its only endpoint* instead. `createPublicPreContract` accepts no amount fields, no price-list id and no owner id, and `/precontrato` is the only public write route in the system. Everything else remains unreachable without a session (`src/proxy.ts`).
+
+**Editing rule (added 2026-11-03, change `edit-precontract`).** A contract is editable only while `payment_status ≠ paid_in_full` AND `contract_status ∈ {pre_contract, confirmed}`; the event date is irrelevant (past events remain editable). The check runs in the UI and again inside the row lock of the action. Further guards: the new total MUST be ≥ the sum of payments; once `payment_status ≠ pending` the deposit is locked; `contract_status` never regresses; `price_list_id`, `folio`, `viewer_token` and `created_by_id` are immutable. Scoping follows the table (contracts of the "Cliente (web)" house user are visible and editable by `super` only). Details in §8.2.
 
 ## 6. Data model
 
@@ -321,6 +323,33 @@ Multi-step wizard, client-side state only until the final step — **no database
 On success: a `contracts` row is created exactly like step 6 of the internal flow (same folio sequence, same `contract_packages`/`contract_service_selections` snapshots), owned by a seeded house `User` ("Cliente (web)", `active: false` — it can never log in, per §4.3/§6.1's `authorize()` check), then the **full** §4.2 delivery pipeline runs automatically, identical to the internal flow's. The client is redirected to the §10 viewer using the new contract's `viewer_token` — never its internal `id`.
 
 A `PUBLIC_PRECONTRACT_ENABLED` environment flag (§11) gates the action independently of the route registration; the primary kill switch is removing `/precontrato` from `src/proxy.ts`'s public prefixes, which blocks both the page and its Server Action's POST.
+
+### 8.2 Contract editing
+
+**Added 2026-11-03, change `edit-precontract`.** Entry point: `/contratos/[id]/editar` (button "Editar" on the contract detail), reusing the §8 wizard in edit mode, preloaded from the contract's own rows (not the live catalog). The price-list step is read-only.
+
+1. **Eligibility.** §5 editing rule, checked in UI and inside the transaction.
+2. **Lines.** Matched by `package_id`. A package kept keeps its `name_snapshot`/`price_snapshot` (§6.5); only quantity may change, and a quantity-only change keeps the snapshot unit price. A newly added package takes the current price from the contract's own price list (must be active and priced there). Removed packages are deleted with their `contract_service_selections`. A kept package that has since become inactive remains valid; live `max_quantity` still applies when its quantity changes. At least one package must remain.
+3. **Selections.** Required service choices are re-validated against live data; invalid or missing ones must be re-chosen.
+4. **Amounts.** Total, balance recomputed. Total ≥ payments. Deposit locked after the first payment. `payment_status` is recomputed without regressing (a `deposit_paid`/`partial` contract stays so unless it becomes `paid_in_full`); `pending → deposit_paid` also promotes `pre_contract → confirmed`, as in a payment.
+5. **Audit.** One transaction under `SELECT … FOR UPDATE`; writes a Note "Contrato editado por {nombre}: {campos}".
+6. **Side effects (post-commit, sequential, fail-open).** Regenerate image; overwrite the Drive files in place (same file ids, so the Calendar attachment link stays valid; create on missing/404); update the Calendar event. Email/WhatsApp are NOT sent automatically — staff use "Reenviar". `drive_uploaded` is reset by the edit and the Drive retry uses the replace path.
+
+**Error copy (es-MX):**
+
+| Case | Message |
+|---|---|
+| Paid in full | Este contrato ya está liquidado y no se puede editar. |
+| completed / cancelled | Este contrato está cerrado y no se puede editar. |
+| Total below paid | El nuevo total ($X) no puede ser menor a lo ya cobrado ($Y). |
+| Deposit locked | El anticipo ya fue cobrado y no se puede modificar. |
+| Deposit > total | El anticipo no puede ser mayor al total. |
+| Package unavailable | El paquete «{nombre}» no está disponible en la lista de precios de este contrato. |
+| Over max quantity | «{nombre}» permite máximo {n} por contrato. |
+| Missing selection | Falta elegir una opción para «{servicio}» en «{paquete}». |
+| No packages | El contrato debe incluir al menos un paquete. |
+| Not found/forbidden | Contrato no encontrado. |
+| Success | Cambios guardados. Recuerda reenviar el contrato al cliente si ya lo recibió. |
 
 ## 9. Reports
 
