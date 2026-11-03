@@ -55,7 +55,6 @@ vi.mock("next/headers", () => ({
 
 import { prisma } from "@/lib/prisma";
 import { scopeToOwner } from "@/lib/authorization";
-import { nextFolio } from "@/lib/contracts/folio";
 import { calculateDefaultDeposit } from "@/lib/deposit";
 import { getDepositThresholds } from "@/lib/deposit-config";
 
@@ -101,6 +100,14 @@ function basePayload(): CreatePublicPreContractPayload {
     contractData: validContractData(),
     turnstileToken: "test-token",
   };
+}
+
+// "No folio consumed" == "no contract row inserted" (folios derive from the
+// highest existing row). Counted per this suite's own house user rather than
+// via a global `nextFolio` before/after, which other test files creating
+// contracts in parallel workers would race against.
+function countHouseUserContracts() {
+  return prisma.contract.count({ where: { createdById: houseUserId } });
 }
 
 async function cleanupCreatedContracts() {
@@ -275,7 +282,7 @@ describe("createPublicPreContract", () => {
     // environment's real deposit thresholds before asserting on it.
     expect(calculateDefaultDeposit(1, thresholds)).toBeGreaterThan(1);
 
-    const folioBefore = await nextFolio(prisma);
+    const contractsBefore = await countHouseUserContracts();
 
     const payload: CreatePublicPreContractPayload = {
       orderLines: [{ packageId: cheapPackageId, quantity: 1 }],
@@ -289,8 +296,7 @@ describe("createPublicPreContract", () => {
     expect((result as { error: string }).error).toMatch(/anticipo mayor al total/);
     expect(mockRunPipeline).not.toHaveBeenCalled();
 
-    const folioAfter = await nextFolio(prisma);
-    expect(folioAfter).toBe(folioBefore);
+    expect(await countHouseUserContracts()).toBe(contractsBefore);
 
     await prisma.packagePrice.deleteMany({ where: { packageId: cheapPackageId } });
     await prisma.package.delete({ where: { id: cheapPackageId } });
@@ -309,13 +315,12 @@ describe("createPublicPreContract", () => {
   it("rejects when Turnstile fails, consuming no folio", async () => {
     mockVerifyTurnstileToken.mockResolvedValue({ ok: false, message: "No pudimos verificar que sea una persona." });
 
-    const folioBefore = await nextFolio(prisma);
+    const contractsBefore = await countHouseUserContracts();
     const result = await createPublicPreContract(basePayload());
-    const folioAfter = await nextFolio(prisma);
 
     expect(result).toEqual({ error: "No pudimos verificar que sea una persona." });
     expect(mockRunPipeline).not.toHaveBeenCalled();
-    expect(folioAfter).toBe(folioBefore);
+    expect(await countHouseUserContracts()).toBe(contractsBefore);
   });
 
   it("rejects when no price list is marked public", async () => {

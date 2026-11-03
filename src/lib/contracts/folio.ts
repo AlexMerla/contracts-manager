@@ -1,3 +1,5 @@
+import { Prisma } from "@/generated/prisma/client";
+
 // Minimal structural type instead of importing a Prisma transaction-client
 // type directly: `scopeToOwner` (src/lib/authorization.ts) returns either the
 // raw `PrismaClient` or a `$extends(...)` client depending on role, and the
@@ -46,4 +48,25 @@ export async function nextFolio(client: FolioClient): Promise<string> {
   const next = highest == null ? FOLIO_START : Math.max(FOLIO_START, Number(highest.folio) + 1);
 
   return String(next).padStart(5, "0");
+}
+
+// True when `error` is a unique-constraint violation on `contracts.folio` —
+// the signal for callers to retry with a freshly computed `nextFolio`. With
+// the pg driver adapter, Prisma's P2002 carries no `meta.target`; the
+// violated index lives under `meta.driverAdapterError.cause.constraint`
+// instead (verified against the real DB: `{ index: "contracts_folio_key" }`).
+// `meta.target` is still checked so a non-adapter client keeps working.
+export function isFolioCollision(error: unknown): boolean {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") {
+    return false;
+  }
+  const target = error.meta?.target;
+  if (Array.isArray(target) && target.includes("folio")) {
+    return true;
+  }
+  const adapterError = error.meta?.driverAdapterError as
+    | { cause?: { constraint?: { index?: string; fields?: string[] } } }
+    | undefined;
+  const constraint = adapterError?.cause?.constraint;
+  return Boolean(constraint?.index?.includes("folio") || constraint?.fields?.includes("folio"));
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { nextFolio } from "@/lib/contracts/folio";
+import { Prisma } from "@/generated/prisma/client";
+import { isFolioCollision, nextFolio } from "@/lib/contracts/folio";
 
 // Fake client structurally satisfying `FolioClient` (the interface `nextFolio`
 // depends on) — no Prisma/DB involved. Mirrors the real `findFirst` semantics
@@ -61,5 +62,47 @@ describe("nextFolio", () => {
   it("rolls over from 09999 to 10000 without losing zero-padding semantics", async () => {
     const folio = await nextFolio(fakeClient(["09999"]));
     expect(folio).toBe("10000");
+  });
+});
+
+function p2002(meta: Record<string, unknown>) {
+  return new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+    code: "P2002",
+    clientVersion: "test",
+    meta,
+  });
+}
+
+describe("isFolioCollision", () => {
+  it("detects a folio collision in the pg driver-adapter error shape (no meta.target)", () => {
+    // Shape captured from the real dev DB with the pg adapter.
+    const error = p2002({
+      driverAdapterError: {
+        name: "DriverAdapterError",
+        cause: {
+          originalCode: "23505",
+          kind: "UniqueConstraintViolation",
+          constraint: { index: "contracts_folio_key" },
+          table: "contracts",
+        },
+      },
+      modelName: "Contract",
+    });
+    expect(isFolioCollision(error)).toBe(true);
+  });
+
+  it("detects a folio collision in the classic meta.target shape", () => {
+    expect(isFolioCollision(p2002({ target: ["folio"] }))).toBe(true);
+  });
+
+  it("ignores a unique violation on another constraint", () => {
+    const error = p2002({
+      driverAdapterError: { cause: { constraint: { index: "contracts_viewer_token_key" } } },
+    });
+    expect(isFolioCollision(error)).toBe(false);
+  });
+
+  it("ignores non-P2002 errors", () => {
+    expect(isFolioCollision(new Error("boom"))).toBe(false);
   });
 });

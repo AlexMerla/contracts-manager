@@ -4,9 +4,8 @@ import { randomUUID } from "node:crypto";
 
 import { headers } from "next/headers";
 
-import { Prisma } from "@/generated/prisma/client";
 import { runContractDeliveryPipeline } from "@/lib/contracts/delivery-pipeline";
-import { nextFolio } from "@/lib/contracts/folio";
+import { isFolioCollision, nextFolio } from "@/lib/contracts/folio";
 import { getHouseUserId } from "@/lib/contracts/house-user";
 import { getPublicPriceList } from "@/lib/contracts/public-price-list";
 import { calculateDefaultDeposit } from "@/lib/deposit";
@@ -44,15 +43,6 @@ const UNAVAILABLE =
   "Por el momento no podemos procesar su solicitud en línea. Comuníquese con nosotros y con gusto lo atendemos.";
 
 const MAX_FOLIO_ATTEMPTS = 3;
-
-function isFolioCollision(error: unknown): boolean {
-  return (
-    error instanceof Prisma.PrismaClientKnownRequestError &&
-    error.code === "P2002" &&
-    Array.isArray(error.meta?.target) &&
-    (error.meta.target as string[]).includes("folio")
-  );
-}
 
 export async function createPublicPreContract(
   input: CreatePublicPreContractPayload

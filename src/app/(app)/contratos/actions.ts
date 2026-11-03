@@ -9,13 +9,12 @@ import { requireRole, scopeToOwner } from "@/lib/authorization";
 import { getContractImageBuffers } from "@/lib/contract-template/get-contract-image-buffer";
 import { runContractDeliveryPipeline } from "@/lib/contracts/delivery-pipeline";
 import type { ContractDeliveryStepResult } from "@/lib/contracts/delivery-step";
-import { nextFolio } from "@/lib/contracts/folio";
+import { isFolioCollision, nextFolio } from "@/lib/contracts/folio";
 import { sendContractEmail } from "@/lib/email/contract-email";
 import { upsertContractCalendarEvent } from "@/lib/google/calendar";
 import { uploadContractImageToDrive } from "@/lib/google/drive";
 import { triggerContractWhatsApp } from "@/lib/whatsapp/manychat";
 import { prisma } from "@/lib/prisma";
-import { Prisma } from "@/generated/prisma/client";
 import { EVENT_TYPE_LABEL } from "@/lib/event-type";
 
 import { createContractPayloadSchema, type CreateContractPayload } from "./nuevo/schema";
@@ -34,15 +33,6 @@ async function requireSession() {
 }
 
 const MAX_FOLIO_ATTEMPTS = 3;
-
-function isFolioCollision(error: unknown): boolean {
-  return (
-    error instanceof Prisma.PrismaClientKnownRequestError &&
-    error.code === "P2002" &&
-    Array.isArray(error.meta?.target) &&
-    (error.meta.target as string[]).includes("folio")
-  );
-}
 
 // Spec §8 step 6 / sprint-04 tasks 6-7 — the confirm-and-create endpoint.
 // Re-validates and recomputes everything server-side; nothing from the
