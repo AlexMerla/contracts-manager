@@ -310,6 +310,22 @@ model Payment {
   recordedById  String         @map("recorded_by_id") @db.Uuid
   createdAt     DateTime       @default(now()) @db.Timestamptz(6) @map("created_at")
 
+  // payment-receipt (spec §6.11, §10). `receiptToken` is the ONLY identifier
+  // the public receipt viewer accepts — never the internal id. The app always
+  // writes its own (`generateReceiptToken`, 256-bit base64url); the database
+  // default exists so the column could be added NOT NULL over existing rows
+  // (two built-in `gen_random_uuid()` = 244 random bits, no extension). The
+  // expression is written exactly as Postgres renders it back, so Migrate
+  // sees no drift.
+  receiptToken        String  @unique @default(dbgenerated("replace(((gen_random_uuid())::text || (gen_random_uuid())::text), '-'::text, ''::text)")) @map("receipt_token")
+  /// Versioned snapshot of every value printed on the receipt
+  /// (`ReceiptSnapshot`, src/lib/payment-receipt/snapshot.ts), written inside
+  /// registerPayment's locked transaction. Null only for payments that predate
+  /// receipts: those have no receipt at all.
+  receiptSnapshot     Json?   @map("receipt_snapshot")
+  receiptEmailSent    Boolean @default(false) @map("receipt_email_sent")
+  receiptWhatsappSent Boolean @default(false) @map("receipt_whatsapp_sent")
+
   contract   Contract @relation(fields: [contractId], references: [id])
   recordedBy User     @relation("PaymentRecordedBy", fields: [recordedById], references: [id])
 

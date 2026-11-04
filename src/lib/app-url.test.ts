@@ -5,6 +5,10 @@ import {
   contractViewerImagePath,
   contractViewerPath,
   contractViewerUrl,
+  paymentReceiptDownloadPath,
+  paymentReceiptImagePath,
+  paymentReceiptViewerPath,
+  paymentReceiptViewerUrl,
   tryContractViewerUrl,
 } from "@/lib/app-url";
 
@@ -89,5 +93,22 @@ describe("contractViewerImagePath", () => {
     expect(contractViewerImagePath("abc-123", "contract", edited)).not.toBe(
       contractViewerImagePath("abc-123", "contract", updatedAt)
     );
+  });
+});
+
+describe("payment receipt paths", () => {
+  it("builds the public viewer and image paths from the token only", () => {
+    expect(paymentReceiptViewerPath("tok_A-1")).toBe("/comprobantes/view/tok_A-1");
+    expect(paymentReceiptImagePath("tok_A-1")).toBe("/comprobantes/view/tok_A-1/image");
+  });
+
+  it("builds the absolute receipt URL from APP_BASE_URL, and throws without it", () => {
+    expect(() => paymentReceiptViewerUrl("tok")).toThrow(/APP_BASE_URL no está configurada/);
+    setBaseUrl("https://contratos.ejemplo.com/");
+    expect(paymentReceiptViewerUrl("tok")).toBe("https://contratos.ejemplo.com/comprobantes/view/tok");
+  });
+
+  it("builds the staff download path inside the authenticated app", () => {
+    expect(paymentReceiptDownloadPath("c-1", "p-2")).toBe("/contratos/c-1/pagos/p-2/comprobante");
   });
 });

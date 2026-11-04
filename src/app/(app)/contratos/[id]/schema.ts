@@ -17,6 +17,10 @@ export const registerPaymentSchema = z.object({
   concept: z.enum(PAYMENT_CONCEPTS, { message: "Seleccione un concepto." }),
   paymentDate: z.string().min(1, "Seleccione la fecha del pago."),
   note: z.string(),
+  // payment-receipt R2: "Enviar comprobante al cliente", checked by default in
+  // the dialog. Unchecked sends nothing; the snapshot and token are written
+  // either way, so the receipt can still be downloaded or sent later.
+  sendReceipt: z.boolean(),
 });
 
 // Output type (post-coercion) — what `registerPayment` (the server action)
@@ -53,3 +57,11 @@ export const cancelContractSchema = z.object({
 });
 
 export type CancelContractValues = z.infer<typeof cancelContractSchema>;
+
+// payment-receipt R7 — "Reenviar comprobante" > Por correo / Por WhatsApp.
+export const resendPaymentReceiptSchema = z.object({
+  paymentId: z.string().uuid(),
+  channel: z.enum(["email", "whatsapp"]),
+});
+
+export type ResendPaymentReceiptValues = z.infer<typeof resendPaymentReceiptSchema>;

@@ -96,3 +96,28 @@ export function tryContractViewerUrl(viewerToken: string): string | null {
     return null;
   }
 }
+
+/** payment-receipt — public receipt viewer page (spec §10). Built from
+ * `payments.receipt_token` only, never the payment's internal id. */
+export function paymentReceiptViewerPath(receiptToken: string): string {
+  return `/comprobantes/view/${encodeURIComponent(receiptToken)}`;
+}
+
+/** The receipt's JPEG route. Unversioned on purpose: a receipt is rendered
+ * from a frozen snapshot, so the bytes behind a token never change. */
+export function paymentReceiptImagePath(receiptToken: string): string {
+  return `${paymentReceiptViewerPath(receiptToken)}/image`;
+}
+
+/** Absolute receipt URL — what ManyChat's receipt-link field carries.
+ * @throws like `appBaseUrl` when `APP_BASE_URL` is missing or invalid. */
+export function paymentReceiptViewerUrl(receiptToken: string): string {
+  return `${appBaseUrl()}${paymentReceiptViewerPath(receiptToken)}`;
+}
+
+/** Staff-only download of a receipt, inside the authenticated app — the route
+ * re-checks the session and `scopeToOwner`. Relative: it is only ever linked
+ * from the contract detail page. */
+export function paymentReceiptDownloadPath(contractId: string, paymentId: string): string {
+  return `/contratos/${encodeURIComponent(contractId)}/pagos/${encodeURIComponent(paymentId)}/comprobante`;
+}

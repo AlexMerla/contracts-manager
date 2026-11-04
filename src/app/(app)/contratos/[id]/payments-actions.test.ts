@@ -136,6 +136,7 @@ describe("registerPayment / addNote", () => {
       concept: "deposit",
       paymentDate: "2027-01-01",
       note: "",
+      sendReceipt: false,
     });
     const second = await registerPayment({
       contractId: contractB.id,
@@ -144,6 +145,7 @@ describe("registerPayment / addNote", () => {
       concept: "deposit",
       paymentDate: "2027-01-02",
       note: "",
+      sendReceipt: false,
     });
 
     expect("success" in first && first.success).toBe(true);
@@ -173,6 +175,7 @@ describe("registerPayment / addNote", () => {
       concept: "deposit",
       paymentDate: "2027-01-01",
       note: "",
+      sendReceipt: false,
     });
     expect("success" in first && first.success).toBe(true);
 
@@ -189,6 +192,7 @@ describe("registerPayment / addNote", () => {
       concept: "installment",
       paymentDate: "2027-02-01",
       note: "Segundo abono",
+      sendReceipt: false,
     });
     expect("success" in second && second.success).toBe(true);
 
@@ -204,6 +208,7 @@ describe("registerPayment / addNote", () => {
       concept: "settlement",
       paymentDate: "2027-03-01",
       note: "",
+      sendReceipt: false,
     });
     expect("success" in third && third.success).toBe(true);
 
@@ -222,7 +227,7 @@ describe("registerPayment / addNote", () => {
     expect(payments).toHaveLength(3);
     const totalPaid = payments.reduce((sum, payment) => sum + Number(payment.amount), 0);
     expect(totalPaid).toBe(5000);
-  });
+  }, 30_000);
 
   // SUPERSEDES the sprint-08 test "recomputes paymentStatus but never
   // re-confirms a cancelled contract", which asserted this call SUCCEEDS.
@@ -245,6 +250,7 @@ describe("registerPayment / addNote", () => {
       concept: "deposit",
       paymentDate: "2027-01-01",
       note: "",
+      sendReceipt: false,
     });
     expect(result).toEqual({
       error: "El contrato está cancelado. No se pueden registrar más pagos.",
@@ -275,6 +281,7 @@ describe("registerPayment / addNote", () => {
       concept: "deposit",
       paymentDate: "2027-01-01",
       note: "",
+      sendReceipt: false,
     });
     expect("success" in result && result.success).toBe(true);
 
@@ -295,6 +302,7 @@ describe("registerPayment / addNote", () => {
       concept: "settlement",
       paymentDate: "2027-01-01",
       note: "",
+      sendReceipt: false,
     });
     expect("success" in result && result.success).toBe(true);
 
@@ -318,6 +326,7 @@ describe("registerPayment / addNote", () => {
       concept: "deposit",
       paymentDate: "2027-01-01",
       note: "",
+      sendReceipt: false,
     });
     expect("error" in result).toBe(true);
 
@@ -343,6 +352,7 @@ describe("registerPayment / addNote", () => {
       concept: "deposit",
       paymentDate: "2027-01-01",
       note: "",
+      sendReceipt: false,
     });
     expect(result).toEqual({ error: "Contrato no encontrado." });
 

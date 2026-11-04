@@ -27,7 +27,18 @@ const PUBLIC_PATHS = ["/login"];
 // inside the action itself (@/lib/public-precontract) is the independent
 // second gate; see that module for why neither is instant on Vercel and
 // what is (`vercel rollback`).
-const PUBLIC_PREFIXES = ["/api/auth", "/contracts/view/", PUBLIC_PRECONTRACT_PREFIX];
+//
+// payment-receipt: `/comprobantes/view/` is the payment-receipt viewer (and
+// its `/image` sub-route), the destination of the WhatsApp link sent after a
+// payment — read-only, guarded by the unguessable `receipt_token` exactly like
+// the contract viewer by `viewer_token` (spec §10). Trailing slash on purpose:
+// nothing else under `/comprobantes` becomes public by accident.
+const PUBLIC_PREFIXES = [
+  "/api/auth",
+  "/contracts/view/",
+  "/comprobantes/view/",
+  PUBLIC_PRECONTRACT_PREFIX,
+];
 
 export default auth((req) => {
   const { pathname } = req.nextUrl;

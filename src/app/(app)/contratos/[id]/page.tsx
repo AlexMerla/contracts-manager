@@ -320,6 +320,10 @@ export default async function ContratoDetailPage({
 
             <TabsPanel value="pagos">
               <PaymentsTab
+                contractId={contract.id}
+                isCancelled={isCancelled}
+                hasEmail={Boolean(contract.clientEmail)}
+                hasMobile={Boolean(contract.clientMobile)}
                 payments={contract.payments.map((payment) => ({
                   id: payment.id,
                   folio: payment.folio,
@@ -327,6 +331,9 @@ export default async function ContratoDetailPage({
                   concept: payment.concept,
                   method: payment.method,
                   amount: Number(payment.amount),
+                  hasReceipt: payment.receiptSnapshot !== null,
+                  receiptEmailSent: payment.receiptEmailSent,
+                  receiptWhatsappSent: payment.receiptWhatsappSent,
                 }))}
               />
             </TabsPanel>

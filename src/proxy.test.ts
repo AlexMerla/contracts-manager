@@ -44,6 +44,20 @@ describe("proxy PUBLIC_PREFIXES", () => {
     expect(result).toBeUndefined();
   });
 
+  // payment-receipt: the WhatsApp link opens on a phone with no session.
+  it("lets an anonymous GET to the payment-receipt viewer and its image through", () => {
+    expect(middleware(fakeRequest("/comprobantes/view/abcDEF123_-xyz0000000"))).toBeUndefined();
+    expect(middleware(fakeRequest("/comprobantes/view/abcDEF123_-xyz0000000/image"))).toBeUndefined();
+  });
+
+  it("keeps the rest of /comprobantes and the staff receipt download behind login", () => {
+    for (const pathname of ["/comprobantes", "/comprobantes/otra", "/contratos/x/pagos/y/comprobante"]) {
+      const result = middleware(fakeRequest(pathname));
+      expect(result).toBeInstanceOf(NextResponse);
+      expect((result as NextResponse).headers.get("location")).toBe("https://example.com/login");
+    }
+  });
+
   // THE NEGATIVE CASE: proves the registration actually matters. If
   // `PUBLIC_PRECONTRACT_PREFIX` were ever removed from `PUBLIC_PREFIXES`,
   // `/precontrato` would fall into this same "anonymous + not public ->

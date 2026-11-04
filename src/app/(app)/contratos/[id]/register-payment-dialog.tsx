@@ -7,10 +7,12 @@ import { CircleAlert } from "lucide-react";
 
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogClose,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -18,6 +20,8 @@ import {
 } from "@/components/ui/dialog";
 import {
   Field,
+  FieldContent,
+  FieldDescription,
   FieldError,
   FieldGroup,
   FieldLabel,
@@ -33,6 +37,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { PAYMENT_CONCEPT_LABEL, PAYMENT_METHOD_LABEL } from "@/lib/payments/labels";
+import type { ReceiptDeliveryFailure } from "@/lib/payment-receipt/delivery";
 
 import { registerPayment } from "./actions";
 import {
@@ -52,6 +57,18 @@ const methods = Object.entries(PAYMENT_METHOD_LABEL) as [
   string,
 ][];
 
+const RECEIPT_CHANNEL_NAME: Record<ReceiptDeliveryFailure["channel"], string> = {
+  email: "correo",
+  whatsapp: "WhatsApp",
+};
+
+/** payment-receipt R2: the payment is recorded; this is what the dialog shows
+ * instead of closing when at least one receipt channel failed. */
+interface ReceiptOutcome {
+  folio: string;
+  failures: ReceiptDeliveryFailure[];
+}
+
 interface RegisterPaymentDialogProps {
   contractId: string;
   /** Current "saldo por cobrar" (total − SUM(payments)), for the dialog's
@@ -70,6 +87,7 @@ export function RegisterPaymentDialog({ contractId, balanceDue, variant }: Regis
   // `watch()` returns a function the React Compiler cannot safely memoize,
   // which the project's ESLint config flags (react-hooks/incompatible-library).
   const [liveAmount, setLiveAmount] = useState("");
+  const [receiptOutcome, setReceiptOutcome] = useState<ReceiptOutcome | null>(null);
 
   const {
     register,
@@ -86,6 +104,7 @@ export function RegisterPaymentDialog({ contractId, balanceDue, variant }: Regis
       concept: "deposit",
       paymentDate: today(),
       note: "",
+      sendReceipt: true,
     },
   });
 
@@ -100,8 +119,16 @@ export function RegisterPaymentDialog({ contractId, balanceDue, variant }: Regis
       setFormError(result.error);
       return;
     }
-    reset({ ...values, amount: 0, note: "", paymentDate: today() });
+    reset({ ...values, amount: 0, note: "", paymentDate: today(), sendReceipt: true });
     setLiveAmount("");
+    // The payment is recorded either way. A receipt that reached every
+    // channel (or was never requested) needs no message — the new row and its
+    // status badges say it; a failed channel keeps the dialog open to say
+    // which, and where to retry.
+    if (result.receiptFailures && result.receiptFailures.length > 0) {
+      setReceiptOutcome({ folio: result.folio, failures: result.receiptFailures });
+      return;
+    }
     setOpen(false);
   }
 
@@ -114,6 +141,7 @@ export function RegisterPaymentDialog({ contractId, balanceDue, variant }: Regis
           reset();
           setLiveAmount("");
           setFormError(null);
+          setReceiptOutcome(null);
         }
       }}
     >
@@ -129,125 +157,185 @@ export function RegisterPaymentDialog({ contractId, balanceDue, variant }: Regis
         Registrar pago
       </DialogTrigger>
       <DialogContent>
-        <form onSubmit={handleSubmit(onSubmit)} noValidate>
-          <DialogHeader>
-            <DialogTitle>Registrar pago</DialogTitle>
-          </DialogHeader>
+        {receiptOutcome ? (
+          <ReceiptOutcomeView outcome={receiptOutcome} />
+        ) : (
+          <form onSubmit={handleSubmit(onSubmit)} noValidate>
+            <DialogHeader>
+              <DialogTitle>Registrar pago</DialogTitle>
+            </DialogHeader>
 
-          <FieldGroup className="mt-4">
-            <Field data-invalid={!!errors.amount}>
-              <FieldLabel htmlFor="amount">Monto</FieldLabel>
-              <Controller
-                control={control}
-                name="amount"
-                render={({ field }) => (
-                  <MoneyInput
-                    id="amount"
-                    value={String(field.value ?? "")}
-                    onChange={(rawValue) => {
-                      field.onChange(rawValue);
-                      setLiveAmount(rawValue);
-                    }}
-                  />
-                )}
-              />
-              <FieldError errors={[errors.amount]} />
-            </Field>
+            <FieldGroup className="mt-4">
+              <Field data-invalid={!!errors.amount}>
+                <FieldLabel htmlFor="amount">Monto</FieldLabel>
+                <Controller
+                  control={control}
+                  name="amount"
+                  render={({ field }) => (
+                    <MoneyInput
+                      id="amount"
+                      value={String(field.value ?? "")}
+                      onChange={(rawValue) => {
+                        field.onChange(rawValue);
+                        setLiveAmount(rawValue);
+                      }}
+                    />
+                  )}
+                />
+                <FieldError errors={[errors.amount]} />
+              </Field>
 
-            <Field data-invalid={!!errors.paymentDate}>
-              <FieldLabel htmlFor="paymentDate">Fecha</FieldLabel>
-              <Input id="paymentDate" type="date" {...register("paymentDate")} />
-              <FieldError errors={[errors.paymentDate]} />
-            </Field>
+              <Field data-invalid={!!errors.paymentDate}>
+                <FieldLabel htmlFor="paymentDate">Fecha</FieldLabel>
+                <Input id="paymentDate" type="date" {...register("paymentDate")} />
+                <FieldError errors={[errors.paymentDate]} />
+              </Field>
 
-            <Field data-invalid={!!errors.method}>
-              <FieldLabel htmlFor="method">Método</FieldLabel>
-              <Controller
-                control={control}
-                name="method"
-                render={({ field }) => (
-                  <Select
-                    items={PAYMENT_METHOD_LABEL}
-                    value={field.value}
-                    onValueChange={field.onChange}
-                  >
-                    <SelectTrigger id="method" className="w-full">
-                      <SelectValue placeholder="Seleccione un método" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {methods.map(([value, label]) => (
-                        <SelectItem key={value} value={value}>
-                          {label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              />
-              <FieldError errors={[errors.method]} />
-            </Field>
+              <Field data-invalid={!!errors.method}>
+                <FieldLabel htmlFor="method">Método</FieldLabel>
+                <Controller
+                  control={control}
+                  name="method"
+                  render={({ field }) => (
+                    <Select
+                      items={PAYMENT_METHOD_LABEL}
+                      value={field.value}
+                      onValueChange={field.onChange}
+                    >
+                      <SelectTrigger id="method" className="w-full">
+                        <SelectValue placeholder="Seleccione un método" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {methods.map(([value, label]) => (
+                          <SelectItem key={value} value={value}>
+                            {label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+                <FieldError errors={[errors.method]} />
+              </Field>
 
-            <Field data-invalid={!!errors.concept}>
-              <FieldLabel htmlFor="concept">Concepto</FieldLabel>
-              <Controller
-                control={control}
-                name="concept"
-                render={({ field }) => (
-                  <Select
-                    items={PAYMENT_CONCEPT_LABEL}
-                    value={field.value}
-                    onValueChange={field.onChange}
-                  >
-                    <SelectTrigger id="concept" className="w-full">
-                      <SelectValue placeholder="Seleccione un concepto" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {concepts.map(([value, label]) => (
-                        <SelectItem key={value} value={value}>
-                          {label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              />
-              <FieldError errors={[errors.concept]} />
-            </Field>
+              <Field data-invalid={!!errors.concept}>
+                <FieldLabel htmlFor="concept">Concepto</FieldLabel>
+                <Controller
+                  control={control}
+                  name="concept"
+                  render={({ field }) => (
+                    <Select
+                      items={PAYMENT_CONCEPT_LABEL}
+                      value={field.value}
+                      onValueChange={field.onChange}
+                    >
+                      <SelectTrigger id="concept" className="w-full">
+                        <SelectValue placeholder="Seleccione un concepto" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {concepts.map(([value, label]) => (
+                          <SelectItem key={value} value={value}>
+                            {label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+                <FieldError errors={[errors.concept]} />
+              </Field>
 
-            <Field data-invalid={!!errors.note}>
-              <FieldLabel htmlFor="note">Referencia (opcional)</FieldLabel>
-              <Textarea
-                id="note"
-                placeholder="Ej. número de transferencia, quién recibió el efectivo…"
-                {...register("note")}
-              />
-              <FieldError errors={[errors.note]} />
-            </Field>
+              <Field data-invalid={!!errors.note}>
+                <FieldLabel htmlFor="note">Referencia (opcional)</FieldLabel>
+                <Textarea
+                  id="note"
+                  placeholder="Ej. número de transferencia, quién recibió el efectivo…"
+                  {...register("note")}
+                />
+                <FieldError errors={[errors.note]} />
+              </Field>
 
-            {overpays && (
-              <Alert
-                tone="info"
-                icon={CircleAlert}
-                title="El monto supera el saldo pendiente"
-                description="El pago se registrará completo y el contrato quedará marcado como pagado en su totalidad."
-              />
-            )}
+              <Field orientation="horizontal">
+                <Controller
+                  control={control}
+                  name="sendReceipt"
+                  render={({ field }) => (
+                    <Checkbox
+                      id="sendReceipt"
+                      checked={field.value}
+                      onCheckedChange={(checked) => field.onChange(checked === true)}
+                    />
+                  )}
+                />
+                <FieldContent>
+                  <FieldLabel htmlFor="sendReceipt" className="font-normal">
+                    Enviar comprobante al cliente
+                  </FieldLabel>
+                  <FieldDescription>
+                    Por correo y por WhatsApp. Si no lo envía ahora, puede hacerlo después desde Pagos.
+                  </FieldDescription>
+                </FieldContent>
+              </Field>
 
-            {formError && (
-              <p role="alert" className="text-sm font-normal text-destructive">
-                {formError}
-              </p>
-            )}
-          </FieldGroup>
+              {overpays && (
+                <Alert
+                  tone="info"
+                  icon={CircleAlert}
+                  title="El monto supera el saldo pendiente"
+                  description="El pago se registrará completo y el contrato quedará marcado como pagado en su totalidad."
+                />
+              )}
 
-          <DialogFooter className="mt-4">
-            <DialogClose render={<Button type="button" variant="ghost" />}>Cancelar</DialogClose>
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Registrando…" : "Registrar pago"}
-            </Button>
-          </DialogFooter>
-        </form>
+              {formError && (
+                <p role="alert" className="text-sm font-normal text-destructive">
+                  {formError}
+                </p>
+              )}
+            </FieldGroup>
+
+            <DialogFooter className="mt-4">
+              <DialogClose render={<Button type="button" variant="ghost" />}>Cancelar</DialogClose>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? "Registrando…" : "Registrar pago"}
+              </Button>
+            </DialogFooter>
+          </form>
+        )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ReceiptOutcomeView({ outcome }: { outcome: ReceiptOutcome }) {
+  const channels = outcome.failures.map((failure) => RECEIPT_CHANNEL_NAME[failure.channel]).join(" ni por ");
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>Pago registrado</DialogTitle>
+        <DialogDescription>
+          El pago <span className="font-mono">{outcome.folio}</span> quedó registrado.
+        </DialogDescription>
+      </DialogHeader>
+      <div className="mt-4">
+        <Alert
+          tone="warning"
+          icon={CircleAlert}
+          title={`No se pudo enviar el comprobante por ${channels}.`}
+          description={
+            <>
+              {outcome.failures.map((failure) => (
+                <span key={failure.channel} className="block">
+                  {failure.message}
+                </span>
+              ))}
+              <span className="mt-1 block">Puede reenviarlo desde la pestaña Pagos.</span>
+            </>
+          }
+        />
+      </div>
+      <DialogFooter className="mt-4">
+        <DialogClose render={<Button type="button" />}>Entendido</DialogClose>
+      </DialogFooter>
+    </>
   );
 }

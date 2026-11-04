@@ -16,10 +16,25 @@ import { runContractEditPipeline } from "@/lib/contracts/delivery-pipeline";
 import { priceOrder, type PriceOrderFailure } from "@/lib/contracts/price-order";
 import { todayInAppTimeZone } from "@/lib/dates";
 import { upsertContractCalendarEvent } from "@/lib/google/calendar";
+import {
+  RECEIPT_CANCELLED_MESSAGE,
+  RECEIPT_NOT_FOUND_MESSAGE,
+  runPaymentReceiptDelivery,
+  sendPaymentReceipt,
+  type ReceiptDeliveryFailure,
+} from "@/lib/payment-receipt/delivery";
+import { buildReceiptSnapshot, toCents } from "@/lib/payment-receipt/snapshot";
+import { generateReceiptToken } from "@/lib/payment-receipt/token";
+import { isFolioCollision } from "@/lib/contracts/folio";
 import { nextPaymentFolio } from "@/lib/payments/folio";
 import { recomputePaymentStatusOnEdit, resolvePaymentStatus } from "@/lib/payments/status";
 import { prisma } from "@/lib/prisma";
-import { Prisma, type ContractStatus, type PaymentStatus } from "@/generated/prisma/client";
+import {
+  Prisma,
+  type ContractStatus,
+  type EventType,
+  type PaymentStatus,
+} from "@/generated/prisma/client";
 
 import {
   updateContractPayloadSchema,
@@ -30,9 +45,11 @@ import {
   addNoteSchema,
   cancelContractSchema,
   registerPaymentSchema,
+  resendPaymentReceiptSchema,
   type AddNoteValues,
   type CancelContractValues,
   type RegisterPaymentValues,
+  type ResendPaymentReceiptValues,
 } from "./schema";
 
 // Spec §5: registering a payment or a note is allowed for both roles, scoped
@@ -58,15 +75,6 @@ async function requireSuperSession() {
 
 const MAX_FOLIO_ATTEMPTS = 3;
 
-function isFolioCollision(error: unknown): boolean {
-  return (
-    error instanceof Prisma.PrismaClientKnownRequestError &&
-    error.code === "P2002" &&
-    Array.isArray(error.meta?.target) &&
-    (error.meta.target as string[]).includes("folio")
-  );
-}
-
 // Thrown (and caught) INSIDE the retry loop when the row lock below finds no
 // contract — this can only happen if the contract was deleted between the
 // ownership check and the transaction, which no code path in this app does,
@@ -83,11 +91,24 @@ interface LockedContractRow {
   paymentStatus: string;
   deposit: Prisma.Decimal;
   total: Prisma.Decimal;
+  // payment-receipt: read under the same lock so the snapshot prints the
+  // contract exactly as it is at the instant this payment commits.
+  folio: string;
+  clientName: string;
+  eventType: EventType;
+  eventDate: Date;
 }
 
 export type RegisterPaymentResult =
   | { error: string }
-  | { success: true; paymentId: string; folio: string };
+  | {
+      success: true;
+      paymentId: string;
+      folio: string;
+      /** `null` when "Enviar comprobante" was unchecked (nothing attempted);
+       * otherwise the channels that failed — empty means both went out. */
+      receiptFailures: ReceiptDeliveryFailure[] | null;
+    };
 
 // Sprint-08 tasks 1-3 / spec §12.6 — the only writer of `payments` and the
 // only non-creation writer of `paymentStatus`/`contractStatus`. `total`,
@@ -137,7 +158,11 @@ export async function registerPayment(
                  contract_status AS "contractStatus",
                  payment_status  AS "paymentStatus",
                  deposit,
-                 total
+                 total,
+                 folio,
+                 client_name     AS "clientName",
+                 event_type      AS "eventType",
+                 event_date      AS "eventDate"
           FROM contracts
           WHERE id = ${data.contractId}
           FOR UPDATE
@@ -157,6 +182,50 @@ export async function registerPayment(
 
         const folio = await nextPaymentFolio(tx);
 
+        // Live aggregate of the payments ALREADY on the contract, computed
+        // INSIDE the same locked transaction — never a denormalized "paid so
+        // far" column. Read before the insert so this payment's receipt
+        // snapshot (which needs the cumulative total) goes in with the row
+        // itself, in one write. Summed in integer cents (status.ts's float
+        // reasoning).
+        const { _sum } = await tx.payment.aggregate({
+          where: { contractId: data.contractId },
+          _sum: { amount: true },
+        });
+        const totalPaidCents = toCents(Number(_sum.amount ?? 0)) + toCents(data.amount);
+
+        const nextStatus = resolvePaymentStatus({
+          previousStatus: locked.paymentStatus as PaymentStatus,
+          totalPaid: totalPaidCents / 100,
+          deposit: Number(locked.deposit),
+          total: Number(locked.total),
+        });
+
+        const paymentDate = new Date(`${data.paymentDate}T00:00:00.000Z`);
+        const note = data.note.trim() || null;
+
+        // payment-receipt R1: the frozen receipt, written in the same insert.
+        // Every later render reads only this — a later payment or an edit of
+        // the contract never changes what this receipt says.
+        const receiptSnapshot = buildReceiptSnapshot({
+          issuedAt: new Date(),
+          paymentFolio: folio,
+          contractFolio: locked.folio,
+          clientName: locked.clientName,
+          eventType: locked.eventType,
+          eventDate: locked.eventDate,
+          amount: data.amount,
+          method: data.method,
+          concept: data.concept,
+          paymentDate,
+          note,
+          contractTotalCents: toCents(Number(locked.total)),
+          totalPaidCents,
+          paymentStatus: nextStatus,
+          // Same snapshot-the-author's-name discipline as the cancel note.
+          recordedByName: session.user.name,
+        });
+
         const payment = await tx.payment.create({
           data: {
             contractId: data.contractId,
@@ -164,26 +233,13 @@ export async function registerPayment(
             amount: data.amount,
             method: data.method,
             concept: data.concept,
-            paymentDate: new Date(`${data.paymentDate}T00:00:00.000Z`),
-            note: data.note.trim() || null,
+            paymentDate,
+            note,
             recordedById: session.user.id,
+            receiptToken: generateReceiptToken(),
+            receiptSnapshot,
           },
-        });
-
-        // Live aggregate, computed INSIDE the same locked transaction —
-        // never a denormalized "paid so far" column. This is the one and
-        // only place `paymentStatus` is derived from.
-        const { _sum } = await tx.payment.aggregate({
-          where: { contractId: data.contractId },
-          _sum: { amount: true },
-        });
-        const totalPaid = Number(_sum.amount ?? 0);
-
-        const nextStatus = resolvePaymentStatus({
-          previousStatus: locked.paymentStatus as PaymentStatus,
-          totalPaid,
-          deposit: Number(locked.deposit),
-          total: Number(locked.total),
+          select: { id: true, folio: true },
         });
 
         // Gated on contractStatus being pre_contract (spec: "Flip is gated
@@ -203,11 +259,17 @@ export async function registerPayment(
         return payment;
       });
 
-      // Re-renders the detail page: the Pagos tab, the sidebar's "Cobrado
-      // $X de $Y", and the status pills all read fresh data.
+      // payment-receipt R2: AFTER the commit, never inside the lock — the
+      // payment exists whatever happens next. `runPaymentReceiptDelivery`
+      // never throws, so a Resend/ManyChat failure can't turn a recorded
+      // payment into an error response.
+      const receiptFailures = data.sendReceipt ? await runPaymentReceiptDelivery(created.id) : null;
+
+      // Re-renders the detail page: the Pagos tab (incl. the receipt status
+      // badges), the sidebar's "Cobrado $X de $Y", and the status pills.
       revalidatePath(`/contratos/${data.contractId}`);
 
-      return { success: true, paymentId: created.id, folio: created.folio };
+      return { success: true, paymentId: created.id, folio: created.folio, receiptFailures };
     } catch (error: unknown) {
       if (error instanceof ContractRowNotFoundError) {
         return { error: "Contrato no encontrado." };
@@ -226,6 +288,44 @@ export async function registerPayment(
 
   // Unreachable — the loop above always returns or throws.
   return { error: "No se pudo generar un folio único. Intente nuevamente." };
+}
+
+export type ResendPaymentReceiptResult = { error: string } | { success: true };
+
+/**
+ * payment-receipt R7 — "Reenviar comprobante" for one payment and one channel.
+ * Scoped like every sibling action: `scopeToOwner` makes another user's
+ * payment indistinguishable from a missing one. A cancelled contract is
+ * refused here AND inside the step itself, before any Resend/ManyChat or
+ * configuration work; the flag is left untouched. Re-runs only the chosen
+ * step, reusing the stored snapshot and token.
+ */
+export async function resendPaymentReceipt(
+  input: ResendPaymentReceiptValues
+): Promise<ResendPaymentReceiptResult> {
+  const session = await requireSession();
+
+  const parsed = resendPaymentReceiptSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Datos inválidos." };
+  }
+  const { paymentId, channel } = parsed.data;
+
+  const db = scopeToOwner(session);
+  const payment = await db.payment.findFirst({
+    where: { id: paymentId },
+    select: { contractId: true, contract: { select: { contractStatus: true } } },
+  });
+  if (!payment) {
+    return { error: RECEIPT_NOT_FOUND_MESSAGE };
+  }
+  if (payment.contract.contractStatus === "cancelled") {
+    return { error: RECEIPT_CANCELLED_MESSAGE };
+  }
+
+  const result = await sendPaymentReceipt(paymentId, channel);
+  revalidatePath(`/contratos/${payment.contractId}`);
+  return result.ok ? { success: true } : { error: result.message };
 }
 
 export type AddNoteResult = { error: string } | { success: true; noteId: string };

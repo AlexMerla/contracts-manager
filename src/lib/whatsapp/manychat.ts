@@ -42,52 +42,67 @@ interface ManyChatEnvelope<T> {
 
 type ManyChatResult<T> = { ok: true; data: T } | { ok: false; message: string };
 
-interface ManyChatConfig {
+/** What every ManyChat exchange needs: the API key and the custom field the
+ * subscriber's phone is stored in (used to find them). */
+interface ManyChatConnection {
   apiKey: string;
   phoneFieldId: string;
+}
+
+interface ManyChatConfig extends ManyChatConnection {
   contractLinkFieldId: string;
   folioFieldId: string;
   flowId: string;
 }
 
-/** All five variables or none — a partial configuration would produce a
- * subscriber with no link, i.e. a WhatsApp message pointing nowhere. */
-function readConfig(): ManyChatResult<ManyChatConfig> {
-  const entries = {
-    apiKey: process.env.MANYCHAT_API_KEY,
-    phoneFieldId: process.env.WHATSAPP_PHONE_FIELD_ID,
-    contractLinkFieldId: process.env.MANYCHAT_FIELD_CONTRACT_LINK,
-    folioFieldId: process.env.MANYCHAT_FIELD_FOLIO,
-    flowId: process.env.MANYCHAT_FLOW_ID,
-  };
-  const names: Record<keyof typeof entries, string> = {
-    apiKey: "MANYCHAT_API_KEY",
-    phoneFieldId: "WHATSAPP_PHONE_FIELD_ID",
-    contractLinkFieldId: "MANYCHAT_FIELD_CONTRACT_LINK",
-    folioFieldId: "MANYCHAT_FIELD_FOLIO",
-    flowId: "MANYCHAT_FLOW_ID",
-  };
+/** payment-receipt R4 — a dedicated flow and fields: reusing the contract
+ * flow would send the contract message with a receipt link in it. */
+interface ManyChatReceiptConfig extends ManyChatConnection {
+  receiptLinkFieldId: string;
+  receiptFolioFieldId: string;
+  receiptAmountFieldId: string;
+  receiptBalanceFieldId: string;
+  receiptFlowId: string;
+}
 
-  const missing = (Object.keys(entries) as (keyof typeof entries)[]).filter(
-    (key) => !entries[key]?.trim()
-  );
+/** All the named variables or none — a partial configuration would produce a
+ * subscriber with no link, i.e. a WhatsApp message pointing nowhere. */
+function readEnvConfig<K extends string>(names: Record<K, string>): ManyChatResult<Record<K, string>> {
+  const keys = Object.keys(names) as K[];
+  const values = Object.fromEntries(
+    keys.map((key) => [key, process.env[names[key]]?.trim() ?? ""])
+  ) as Record<K, string>;
+
+  const missing = keys.filter((key) => !values[key]);
   if (missing.length > 0) {
     return {
       ok: false,
       message: `Falta configurar ${missing.map((key) => names[key]).join(", ")} para enviar el WhatsApp.`,
     };
   }
+  return { ok: true, data: values };
+}
 
-  return {
-    ok: true,
-    data: {
-      apiKey: entries.apiKey!.trim(),
-      phoneFieldId: entries.phoneFieldId!.trim(),
-      contractLinkFieldId: entries.contractLinkFieldId!.trim(),
-      folioFieldId: entries.folioFieldId!.trim(),
-      flowId: entries.flowId!.trim(),
-    },
-  };
+function readConfig(): ManyChatResult<ManyChatConfig> {
+  return readEnvConfig({
+    apiKey: "MANYCHAT_API_KEY",
+    phoneFieldId: "WHATSAPP_PHONE_FIELD_ID",
+    contractLinkFieldId: "MANYCHAT_FIELD_CONTRACT_LINK",
+    folioFieldId: "MANYCHAT_FIELD_FOLIO",
+    flowId: "MANYCHAT_FLOW_ID",
+  });
+}
+
+function readReceiptConfig(): ManyChatResult<ManyChatReceiptConfig> {
+  return readEnvConfig({
+    apiKey: "MANYCHAT_API_KEY",
+    phoneFieldId: "WHATSAPP_PHONE_FIELD_ID",
+    receiptLinkFieldId: "MANYCHAT_FIELD_RECEIPT_LINK",
+    receiptFolioFieldId: "MANYCHAT_FIELD_RECEIPT_FOLIO",
+    receiptAmountFieldId: "MANYCHAT_FIELD_RECEIPT_AMOUNT",
+    receiptBalanceFieldId: "MANYCHAT_FIELD_RECEIPT_BALANCE",
+    receiptFlowId: "MANYCHAT_RECEIPT_FLOW_ID",
+  });
 }
 
 /**
@@ -118,7 +133,7 @@ export function normalizeMexicanMobile(phone: string): string | null {
  * checked. Never throws: a transport error becomes a failure value, same
  * contract as `googleApiFetch`. */
 async function manyChatFetch<T>(params: {
-  config: ManyChatConfig;
+  config: ManyChatConnection;
   path: string;
   method?: string;
   body?: unknown;
@@ -158,7 +173,7 @@ async function manyChatFetch<T>(params: {
 }
 
 async function findOrCreateSubscriber(
-  config: ManyChatConfig,
+  config: ManyChatConnection,
   normalizedPhone: string,
   clientName: string
 ): Promise<ManyChatResult<string>> {
@@ -326,4 +341,76 @@ export async function triggerContractWhatsApp(
     folio: contract.folio,
     viewerUrl,
   });
+}
+
+export interface ReceiptWhatsAppMessage {
+  /** Raw `clientMobile` as stored; normalised here. */
+  phone: string;
+  clientName: string;
+  /** Absolute public receipt URL (spec §10) — built from `receipt_token`. */
+  receiptUrl: string;
+  paymentFolio: string;
+  /** Already formatted for display ("$5,000.00"). */
+  amount: string;
+  /** Already formatted ("$8,000.00" or "Liquidado"). */
+  balance: string;
+}
+
+/**
+ * payment-receipt R4 — same three calls as `sendContractWhatsAppMessage`
+ * (find-or-create, setCustomFields, sendFlow), against the receipt flow and
+ * fields. A LINK, never an image: ManyChat's public API has no file upload
+ * (checked against its Swagger, 2026-11-02 — `/fb/sending/*` only takes
+ * content JSON or a flow), so the client opens the receipt at the public
+ * viewer. Plain data in, no database; never throws.
+ */
+export async function sendReceiptWhatsAppMessage(
+  message: ReceiptWhatsAppMessage
+): Promise<ContractDeliveryStepResult> {
+  const config = readReceiptConfig();
+  if (!config.ok) {
+    return { ok: false, message: config.message };
+  }
+
+  const normalizedPhone = normalizeMexicanMobile(message.phone);
+  if (!normalizedPhone) {
+    return { ok: false, message: `El celular "${message.phone}" no es un número válido.` };
+  }
+
+  const subscriber = await findOrCreateSubscriber(config.data, normalizedPhone, message.clientName);
+  if (!subscriber.ok) {
+    return { ok: false, message: subscriber.message };
+  }
+
+  const fields = await manyChatFetch<null>({
+    config: config.data,
+    path: "/fb/subscriber/setCustomFields",
+    method: "POST",
+    body: {
+      subscriber_id: subscriber.data,
+      fields: [
+        { field_id: config.data.receiptLinkFieldId, field_value: message.receiptUrl },
+        { field_id: config.data.receiptFolioFieldId, field_value: message.paymentFolio },
+        { field_id: config.data.receiptAmountFieldId, field_value: message.amount },
+        { field_id: config.data.receiptBalanceFieldId, field_value: message.balance },
+      ],
+    },
+    operation: "guardar los datos del comprobante en ManyChat",
+  });
+  if (!fields.ok) {
+    return { ok: false, message: fields.message };
+  }
+
+  const flow = await manyChatFetch<null>({
+    config: config.data,
+    path: "/fb/sending/sendFlow",
+    method: "POST",
+    body: { subscriber_id: subscriber.data, flow_ns: config.data.receiptFlowId },
+    operation: "disparar el envío del comprobante por WhatsApp en ManyChat",
+  });
+  if (!flow.ok) {
+    return { ok: false, message: flow.message };
+  }
+
+  return { ok: true };
 }

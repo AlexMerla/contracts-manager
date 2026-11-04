@@ -1,5 +1,3 @@
-import { Resend } from "resend";
-
 import {
   clientFacingImage,
   clientFacingImageFileName,
@@ -10,6 +8,10 @@ import {
   type ContractDeliveryStepResult,
 } from "@/lib/contracts/delivery-step";
 import { prisma } from "@/lib/prisma";
+
+import { resendClient, resendFromAddress } from "./resend-client";
+
+import type { Resend } from "resend";
 
 // Sprint-07 tasks 2 & 3 — deliver the contract to the client by email
 // (spec §3: Resend; §4.2: a sequential in-process step with retry by status
@@ -40,30 +42,6 @@ const PRECONTRACT_CONFIRMATION_TEMPLATE_ID = "precontract-confirmation-1";
 // (`ContractDeliveryStepResult`) and nothing else. A single generic
 // "external call" helper over an SDK and a bespoke `{status:"success"}`
 // envelope would abstract two things that have nothing in common.
-
-/** Required because an unverified sender silently bounces every delivery —
- * there is no safe default to fall back to. */
-function resendFromAddress(): string {
-  const from = process.env.RESEND_FROM_EMAIL?.trim();
-  if (!from) {
-    throw new Error(
-      "RESEND_FROM_EMAIL no está configurada. Defina el remitente verificado en Resend " +
-        '(por ejemplo "Todo con un Solo Proveedor <contratos@sudominio.com>").'
-    );
-  }
-  return from;
-}
-
-function resendClient(): Resend {
-  const apiKey = process.env.RESEND_API_KEY?.trim();
-  if (!apiKey) {
-    throw new Error("RESEND_API_KEY no está configurada; no se puede enviar el correo.");
-  }
-  // Constructed per call rather than memoised: at ~2 contracts/week (§4.2)
-  // the allocation is free, and it removes any chance of holding a client
-  // built from a rotated key.
-  return new Resend(apiKey);
-}
 
 /**
  * Sends the fixed-content "precontract-confirmation" Resend Template to
