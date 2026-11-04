@@ -1,0 +1,101 @@
+<!--
+  Resend dashboard template: "payment-receipt". Its id goes in
+  RESEND_RECEIPT_TEMPLATE_ID. Four text-only variables, never used inside
+  an href/src attribute (resend/react-email#3247):
+    CLIENT_NAME   — "María López García"
+    PAYMENT_FOLIO — "PG-0007"
+    AMOUNT        — "$5,000.00"
+    BALANCE       — "$15,000.00", or "Liquidado" once nothing is owed
+  The recipient and the attached receipt JPG are set by the app's code
+  (src/lib/email/receipt-email.ts), not by this template.
+
+  Paste into Resend's template editor in "Code"/HTML mode.
+  Resend's variable syntax is triple-brace: {{{CLIENT_NAME}}}.
+-->
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Comprobante de pago — Todo con un Solo Proveedor</title>
+  </head>
+  <body style="margin:0;padding:24px 12px;background:#f4f4f5;font-family:Helvetica,Arial,sans-serif;color:#18181b;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;">
+      <tr>
+        <td style="padding:32px 32px 28px;">
+          <p style="margin:0 0 4px;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#71717a;">
+            Comprobante de pago
+          </p>
+          <h1 style="margin:0 0 20px;font-size:20px;line-height:1.3;">
+            Todo con un Solo Proveedor
+          </h1>
+
+          <p style="margin:0 0 16px;font-size:15px;line-height:1.6;">
+            Estimado(a) {{{CLIENT_NAME}}}:
+          </p>
+
+          <p style="margin:0 0 24px;font-size:15px;line-height:1.6;">
+            Le confirmamos que hemos recibido su pago. Muchas gracias por su
+            puntualidad y por la confianza que deposita en nosotros para su
+            evento.
+          </p>
+
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 24px;background:#f4f4f5;border-radius:8px;">
+            <tr>
+              <td style="padding:20px 20px 8px;text-align:center;">
+                <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#52525b;">
+                  Monto recibido
+                </p>
+                <p style="margin:0 0 4px;font-size:30px;font-weight:700;line-height:1.2;">
+                  {{{AMOUNT}}}
+                </p>
+                <p style="margin:0 0 16px;font-size:13px;color:#71717a;">
+                  Folio {{{PAYMENT_FOLIO}}}
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 20px 20px;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #e4e4e7;">
+                  <tr>
+                    <td style="padding:14px 0 0;font-size:14px;color:#52525b;">
+                      Saldo pendiente
+                    </td>
+                    <td style="padding:14px 0 0;font-size:15px;font-weight:700;text-align:right;">
+                      {{{BALANCE}}}
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+
+          <p style="margin:0 0 16px;font-size:15px;line-height:1.6;">
+            Adjunto a este correo encontrará su <strong>comprobante de
+            pago</strong> con el detalle completo. Le recomendamos conservarlo
+            para cualquier aclaración.
+          </p>
+
+          <p style="margin:0 0 24px;font-size:15px;line-height:1.6;">
+            Si tiene alguna duda sobre su pago o su saldo, con gusto lo
+            atendemos.
+          </p>
+
+          <p style="margin:0 0 4px;font-size:15px;line-height:1.6;">
+            Atentamente,
+          </p>
+          <p style="margin:0 0 20px;font-size:15px;line-height:1.6;">
+            Alex Merla<br />CEO
+          </p>
+
+          <p style="margin:0 0 2px;font-size:13px;line-height:1.6;color:#52525b;">
+            Tel — (81) 1157 0493
+          </p>
+          <p style="margin:0;font-size:13px;line-height:1.6;color:#52525b;">
+            www.todoconunsoloproveedor.com
+          </p>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
