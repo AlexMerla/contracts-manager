@@ -22,12 +22,13 @@ Expected volume: **~2 contracts per week**. This number drives several architect
 - Generate the contract as an image on the client's existing JPEG template.
 - Deliver the contract by email and by WhatsApp (via ManyChat), backed up to Google Drive and Google Calendar.
 - Support two user roles with different data visibility.
+- Issue a frozen payment receipt (comprobante) as a JPG for every registered payment, deliverable to the client by email and by a WhatsApp link, and downloadable by staff at any time.
 
 **Non-goals (explicitly out of scope)**
 - Multi-tenant support (this is a single-business system).
 - A job queue / message broker (Redis, BullMQ, SQS, etc.) — deliberately excluded, see §4.2.
 - Migrating data from the client's previous system — not required.
-- Client self-service portal (clients only ever access the read-only contract viewer link). **Retracted 2026-10-10 — partially**, see §12 item 7: an anonymous visitor may now assemble and submit a pre-contract through the public `/precontrato` flow (§8.1). Clients still have no account, no login, and no ability to view, edit, or cancel anything beyond the read-only viewer link (§10).
+- Client self-service portal (clients only ever access the read-only contract viewer link). **Retracted 2026-10-10 — partially**, see §12 item 7: an anonymous visitor may now assemble and submit a pre-contract through the public `/precontrato` flow (§8.1). Clients still have no account, no login, and no ability to view, edit, or cancel anything beyond the read-only viewer link (§10). The read-only payment-receipt viewer (§10) is the same kind of link and grants nothing more.
 - Native mobile app — responsive web only.
 
 ## 3. Tech stack
@@ -80,6 +81,10 @@ When a contract is confirmed (last step of the creation flow, §8):
 5. Each status column has a **manual retry** action in the UI (e.g., a "retry Drive upload" button on the contract detail page) that re-runs only that step, idempotently. Retrying must not create duplicate Drive files, duplicate Calendar events, or duplicate emails — check the relevant ID/status column before acting.
 
 Status changes never trigger delivery. Registering the deposit (pre_contract → confirmed) or any later status change does NOT re-send the email or WhatsApp, re-upload to Drive, or touch Calendar. Because every client channel picks its image from the current status (§7), the viewer link the client already has switches to the official contract by itself; a fresh email with the official contract is sent only through the manual "Reenviar" action.
+
+**Payment receipts follow the same pattern.** After a payment commits, and only if "Enviar comprobante al cliente" was checked, the receipt email and WhatsApp link are sent sequentially in-process; each result is stored in `payments.receipt_email_sent` / `receipt_whatsapp_sent` and each has a per-payment manual "Reenviar comprobante" action. Receipt failures never fail the payment. Receipts are never uploaded to Drive and never touch Calendar; the on-demand "Descargar comprobante" action is the backup. A cancelled contract's receipts are never sent (both channels refuse, before any external call), but staff can still download them.
+
+**WhatsApp delivery of receipts is currently paused** (product decision 2026-11-03; it will change later). A single switch, `RECEIPT_WHATSAPP_ENABLED` in `src/lib/payment-receipt/whatsapp-switch.ts` (default `false`), turns it off: post-payment delivery never calls ManyChat for receipts, the "Por WhatsApp" resend item and the WhatsApp badge are not rendered, and a WhatsApp resend is refused with no external call. Email delivery and "Descargar comprobante" are unaffected. The ManyChat receipt module, `receipt_whatsapp_sent` and the public viewer (§10) are kept so re-enabling is flipping the switch and setting the `MANYCHAT_*RECEIPT*` variables, which are unused meanwhile.
 
 This pattern (status columns + manual retry) is the intended replacement for a queue's retry mechanism. Do not introduce a queue, cron job, or background worker to "improve" this — it is a deliberate simplification given the low volume.
 
@@ -254,12 +259,18 @@ Records which option the client actually chose, for services that have `options`
 |---|---|---|
 | id | uuid, PK | |
 | contract_id | uuid, FK → contracts | |
+| folio | text, unique | `PG-0001`, consecutive across all contracts |
 | amount | numeric(10,2) | |
+| concept | enum: `deposit`, `installment`, `settlement`, `other` | chosen by the user; independent of the status transition the payment triggers |
 | method | enum: `cash`, `bank_transfer`, `card`, `other` | fixed list, not free text — adjust the exact set of values with the client if needed, but keep it an enum |
 | payment_date | date | |
 | note | text, nullable | |
 | recorded_by_id | uuid, FK → users | |
 | created_at | timestamptz | |
+| receipt_token | text, unique, not null | Unguessable (≥128-bit CSPRNG) public identifier of the receipt (§10); never the internal id |
+| receipt_snapshot | jsonb, nullable | Versioned snapshot of every value printed on the receipt, written in the registering transaction; null only for payments that predate receipts, which have no receipt |
+| receipt_email_sent | boolean, default false | |
+| receipt_whatsapp_sent | boolean, default false | |
 
 ### 6.12 `notes`
 | Column | Type | Notes |
@@ -299,6 +310,7 @@ Singleton table — application logic must enforce exactly one row.
 - Output format: JPEG buffer, same as the legacy implementation.
 - Two templates exist: `contract.jpg` (official, "Contrato") and `pre-contract.jpg` ("Precontrato"), sharing one field map. Drive stores both (`Contrato<folio>.jpg`, `Precontrato<folio>.jpg`); Calendar links both.
 - **Client-facing variant is decided by the contract's CURRENT `contract_status`, at send/request time:** `pre_contract` → Precontrato; `confirmed`/`completed` → Contrato; `cancelled` → no client-facing image (viewer and image route return 404; email and WhatsApp refuse to send). The attachment/download filename is `<Precontrato|Contrato><folio>.jpg`. This rule lives in one helper (`clientFacingImage`); no caller may assume a default variant.
+- **Payment receipts** are drawn entirely in code (1080x1440 JPG, `@napi-rs/canvas`) from `payments.receipt_snapshot`, reusing the brand block cropped from `contract.jpg`; they are an exception to "client JPEG template" because no receipt template exists. They use Geist Regular and Geist SemiBold. A receipt is never regenerated from live contract data; it is stored nowhere (rendered on demand, deterministic from the snapshot). The filename is `Comprobante<PG-####>.jpg`.
 
 ## 8. Contract creation flow ("store mode")
 
@@ -357,18 +369,20 @@ Filterable by date range, price list, creating user, client, and event type (per
 
 ## 10. Public routes
 
-Two routes are reachable with no authentication, and only two: the contract viewer below, and the pre-contract flow (§8.1). Both are registered in `src/proxy.ts`'s `PUBLIC_PREFIXES`; anything absent from that list redirects to `/login`.
+Three routes are reachable with no authentication, and only three: the contract viewer, the payment-receipt viewer, and the pre-contract flow (§8.1). All are registered in `src/proxy.ts`'s `PUBLIC_PREFIXES`; anything absent from that list redirects to `/login`.
 
 **Public contract viewer.** Route: `/contracts/view/[viewerToken]`, no authentication. Displays the generated contract image (and/or the underlying data) for the client to review. This is the destination of the link ManyChat sends over WhatsApp. Must not expose any other contract's data or any internal numeric ID.
 
 The viewer shows the variant for the contract's current status (§7) — title, heading, alt text, image and download filename all say "Precontrato" or "Contrato" accordingly — and returns a generic 404 for a cancelled contract, on both the page and its `/image` sub-route. The image response is `Cache-Control: private` (never shared caches); the page versions the image URL by variant so a status change is never masked by a cached copy.
+
+**Public payment-receipt viewer.** Route: `/comprobantes/view/[receiptToken]` (page) and `/comprobantes/view/[receiptToken]/image` (JPG, `Cache-Control: private`), no authentication, registered in `PUBLIC_PREFIXES`. Destination of the link ManyChat sends over WhatsApp after a payment. Identified solely by `payments.receipt_token`; never exposes the payment's or contract's internal id. Returns a generic 404, identical to an unknown token, when the token is unknown, the payment's contract is `cancelled`, or the payment has no receipt.
 
 ## 11. Hosting and environment
 
 - Vercel free tier for the Next.js app (frontend + API routes).
 - PostgreSQL via Neon or Supabase free tier.
 - Resend free tier for email.
-- Environment variables must include (at minimum): `DATABASE_URL`, `NEXTAUTH_SECRET`, `GOOGLE_MASTER_CLIENT_ID`/`SECRET` (Flow B, §4.3 — the only Google OAuth credentials the system needs), `RESEND_API_KEY`, `MIN_CONTRACT_ADVANCE`, `MAX_CONTRACT_ADVANCE`, `TOTAL_CONTRACT_MIN`, `TOKEN_ENCRYPTION_KEY` (for `google_connection.refresh_token_encrypted`), `TURNSTILE_SECRET_KEY`, `NEXT_PUBLIC_TURNSTILE_SITE_KEY`, `PUBLIC_PRECONTRACT_ENABLED` (§8.1 — the public pre-contract flow's Cloudflare Turnstile keys and its independent kill switch, default disabled).
+- Environment variables must include (at minimum): `DATABASE_URL`, `NEXTAUTH_SECRET`, `GOOGLE_MASTER_CLIENT_ID`/`SECRET` (Flow B, §4.3 — the only Google OAuth credentials the system needs), `RESEND_API_KEY`, `MIN_CONTRACT_ADVANCE`, `MAX_CONTRACT_ADVANCE`, `TOTAL_CONTRACT_MIN`, `TOKEN_ENCRYPTION_KEY` (for `google_connection.refresh_token_encrypted`), `TURNSTILE_SECRET_KEY`, `NEXT_PUBLIC_TURNSTILE_SITE_KEY`, `PUBLIC_PRECONTRACT_ENABLED` (§8.1 — the public pre-contract flow's Cloudflare Turnstile keys and its independent kill switch, default disabled), `RESEND_RECEIPT_TEMPLATE_ID`, `MANYCHAT_RECEIPT_FLOW_ID`, `MANYCHAT_FIELD_RECEIPT_LINK`, `MANYCHAT_FIELD_RECEIPT_FOLIO`, `MANYCHAT_FIELD_RECEIPT_AMOUNT`, `MANYCHAT_FIELD_RECEIPT_BALANCE` (payment receipts; the ManyChat set is all-or-nothing; the ManyChat flow must open with an approved WhatsApp template to reach clients outside the 24 h window; the Resend template and the ManyChat flow/fields are created by the business outside the repo).
 - **`DIRECT_URL`** (local/dev only, not deployed to Vercel): Supabase's direct (non-pooled, port 5432) connection string, used exclusively by `prisma.config.ts` for `prisma migrate`/`db push`/introspection. `DATABASE_URL` (Supabase's transaction pooler, port 6543) is what the running app actually connects with (see `src/lib/prisma.ts`) and is the one configured in Vercel — the pooler doesn't hold the session-level locks Prisma Migrate needs, so Migrate must always go through the direct connection instead.
 
 ## 12. Resolved decisions log
@@ -382,6 +396,7 @@ No open questions remain. The following decisions were confirmed and are reflect
 5. **Cancellation reason** — free text field (§6.4).
 6. **User login has no Google sign-in** (corrected 2026-09-05, during Sprint 2 implementation) — email + password only, via the Auth.js Credentials provider. Accounts are created exclusively by a `super` user through the user management CRUD (§5, §14); there is no self-service registration. This was a drafting error in the original spec, which called for an additional Google sign-in option for users — dropped in favor of a single, `super`-controlled account-creation path. `users.password_hash` is required as a result (§6.1).
 7. **Clients may create their own pre-contract** (added 2026-10-10, change `public-precontract`) — the §2 non-goal "Client self-service portal" is retracted to the extent of exactly ONE anonymous write endpoint: the `/precontrato` flow (§8.1), where a visitor assembles a cart from the single `is_public` price list and submits it. The result is an ordinary `pre_contract` row owned by a seeded house user ("Cliente (web)"), so §5's `createdById` scoping applies unchanged and only `super` sees these contracts. Every amount is server-derived — `discount` and `extra_charge` are always null and `deposit` is always the §6.4 threshold rule — because the anonymous payload declares no amount fields at all. Cloudflare Turnstile gates the submission. No client account, no login, no self-service registration and no payment collection were added: §4.3 and item 6 above stand unchanged.
+8. **Payment receipts** (added 2026-11-02, change `payment-receipt`) — receipts are delivered by email (JPG attached) and WhatsApp (a link to a public viewer, because ManyChat's API cannot upload a file), never to Drive; staff download them on demand, including for cancelled contracts. Payments registered before this change have no receipt.
 
 ## 13. Implementation roadmap
 
