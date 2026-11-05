@@ -261,7 +261,7 @@ export async function registerPayment(
 
       // payment-receipt R2: AFTER the commit, never inside the lock — the
       // payment exists whatever happens next. `runPaymentReceiptDelivery`
-      // never throws, so a Resend/ManyChat failure can't turn a recorded
+      // never throws, so a Resend/HighLevel failure can't turn a recorded
       // payment into an error response.
       const receiptFailures = data.sendReceipt ? await runPaymentReceiptDelivery(created.id) : null;
 
@@ -296,7 +296,7 @@ export type ResendPaymentReceiptResult = { error: string } | { success: true };
  * payment-receipt R7 — "Reenviar comprobante" for one payment and one channel.
  * Scoped like every sibling action: `scopeToOwner` makes another user's
  * payment indistinguishable from a missing one. A cancelled contract is
- * refused here AND inside the step itself, before any Resend/ManyChat or
+ * refused here AND inside the step itself, before any Resend/HighLevel or
  * configuration work; the flag is left untouched. Re-runs only the chosen
  * step, reusing the stored snapshot and token.
  */

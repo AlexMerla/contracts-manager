@@ -9,6 +9,7 @@ import {
   FileImage,
   HardDrive,
   Link2,
+  MessageCircle,
   Pencil,
 } from "lucide-react";
 
@@ -23,6 +24,7 @@ import {
 } from "@/lib/contracts/contract-edit";
 import { EVENT_TYPE_LABEL } from "@/lib/event-type";
 import { driveFileViewUrl } from "@/lib/google/drive";
+import { normalizeMexicanMobile } from "@/lib/phone";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -126,6 +128,10 @@ export default async function ContratoDetailPage({
   // Spec §7: what the client is shown right now (`null` once cancelled) — the
   // "Ver" link below opens exactly that, through the public image route.
   const clientImage = clientFacingImage(contract.contractStatus);
+  // highlevel-whatsapp: the same rule the send applies server-side — without
+  // a valid Mexican mobile there is no WhatsApp to send or retry.
+  const hasWhatsAppMobile =
+    contract.clientMobile != null && normalizeMexicanMobile(contract.clientMobile) !== null;
   // Spec §5 editing rule. Ownership is already proven (this page 404s on a
   // contract the session cannot see), so editability is the only gate left.
   const isEditable = contractEditBlock(contract.contractStatus, contract.paymentStatus) === null;
@@ -186,7 +192,7 @@ export default async function ContratoDetailPage({
               <ResendMenu
                 contractId={contract.id}
                 hasEmail={Boolean(contract.clientEmail)}
-                hasMobile={Boolean(contract.clientMobile)}
+                hasMobile={hasWhatsAppMobile}
               />
             )}
             {!isCancelled && (
@@ -323,7 +329,7 @@ export default async function ContratoDetailPage({
                 contractId={contract.id}
                 isCancelled={isCancelled}
                 hasEmail={Boolean(contract.clientEmail)}
-                hasMobile={Boolean(contract.clientMobile)}
+                hasMobile={hasWhatsAppMobile}
                 payments={contract.payments.map((payment) => ({
                   id: payment.id,
                   folio: payment.folio,
@@ -514,12 +520,46 @@ export default async function ContratoDetailPage({
                 }
               />
 
+              {/* highlevel-whatsapp: `whatsappSent` with its own retry, like
+                  the rows above. "Enviado" means handed to the HighLevel
+                  workflow; ru42 confirms the actual delivery. The retry is
+                  hidden once sent ("Reenviar por WhatsApp" in the header
+                  stays) and for a cancelled contract or a client with no
+                  valid mobile (both refused server-side too). */}
+              <div className="flex flex-col gap-1">
+                <BackupRow
+                  icon={MessageCircle}
+                  label="WhatsApp al cliente"
+                  action={
+                    !hasWhatsAppMobile ? (
+                      <span className="text-sm text-muted-foreground">Sin celular válido</span>
+                    ) : contract.whatsappSent ? (
+                      <Badge variant="success" dot>
+                        WhatsApp enviado
+                      </Badge>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <Badge variant="warning" dot>
+                          WhatsApp pendiente
+                        </Badge>
+                        {!isCancelled && <RetryStepButton contractId={contract.id} step="whatsapp" />}
+                      </div>
+                    )
+                  }
+                />
+                {contract.whatsappSent && (
+                  <p className="text-xs text-muted-foreground">
+                    Se entregó a HighLevel para su envío; la entrega final se confirma en ru42.
+                  </p>
+                )}
+              </div>
+
               {/* Sprint 7 task 5 — unconditional, on every contract: the
-                  ManyChat trigger has no status column, so its failure is
-                  silent and this link is the only way staff can recover from
-                  it. It must stay visible and copyable, which is why it is a
-                  full-width block here and not hidden behind the header menu
-                  (the menu only re-triggers delivery; it never shows the URL). */}
+                  manual fallback when WhatsApp cannot be sent (no valid
+                  mobile, HighLevel down, client asks again). It must stay
+                  visible and copyable, which is why it is a full-width block
+                  here and not hidden behind the header menu (the menu only
+                  re-triggers delivery; it never shows the URL). */}
               <div className="flex flex-col gap-2 border-t pt-3">
                 <div className="flex items-center gap-2">
                   <Icon icon={Link2} className="size-4 text-muted-foreground" />

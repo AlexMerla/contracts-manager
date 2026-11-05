@@ -12,7 +12,6 @@ import {
 } from "@/components/ui/table";
 import { Money } from "@/components/money";
 import { paymentReceiptDownloadPath } from "@/lib/app-url";
-import { RECEIPT_WHATSAPP_ENABLED } from "@/lib/payment-receipt/whatsapp-switch";
 import { PAYMENT_CONCEPT_LABEL, PAYMENT_METHOD_LABEL } from "@/lib/payments/labels";
 import type { PaymentConcept, PaymentMethod } from "@/generated/prisma/client";
 
@@ -47,11 +46,14 @@ interface PaymentsTabProps {
   hasMobile: boolean;
 }
 
+/** highlevel-whatsapp: "sent" means handed to the HighLevel workflow. */
+const WHATSAPP_SENT_HELP = "Se entregó a HighLevel para su envío; la entrega final se confirma en ru42.";
+
 /** "enviado" (success) vs "pendiente" (neutral, not warning: an unchecked
  * "Enviar comprobante" is a normal choice, not a failure to chase). */
-function ReceiptChannelBadge({ label, sent }: { label: string; sent: boolean }) {
+function ReceiptChannelBadge({ label, sent, title }: { label: string; sent: boolean; title?: string }) {
   return (
-    <Badge variant={sent ? "success" : "secondary"} dot>
+    <Badge variant={sent ? "success" : "secondary"} dot title={title}>
       {label} {sent ? "enviado" : "pendiente"}
     </Badge>
   );
@@ -98,9 +100,11 @@ export function PaymentsTab({ contractId, payments, isCancelled, hasEmail, hasMo
                 {payment.hasReceipt ? (
                   <div className="flex flex-wrap gap-1.5">
                     <ReceiptChannelBadge label="Correo" sent={payment.receiptEmailSent} />
-                    {RECEIPT_WHATSAPP_ENABLED && (
-                      <ReceiptChannelBadge label="WhatsApp" sent={payment.receiptWhatsappSent} />
-                    )}
+                    <ReceiptChannelBadge
+                      label="WhatsApp"
+                      sent={payment.receiptWhatsappSent}
+                      title={payment.receiptWhatsappSent ? WHATSAPP_SENT_HELP : undefined}
+                    />
                   </div>
                 ) : (
                   <span className="text-sm text-muted-foreground">Sin comprobante</span>

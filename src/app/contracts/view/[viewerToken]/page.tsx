@@ -8,7 +8,7 @@ import { EVENT_TYPE_LABEL } from "@/lib/event-type";
 import { prisma } from "@/lib/prisma";
 
 // Sprint-07 task 1 / spec §10 — the unauthenticated contract viewer. This is
-// the destination of the WhatsApp link ManyChat sends and of the button in
+// the destination of the WhatsApp link sent through HighLevel and of the button in
 // the client's email.
 //
 // It lives OUTSIDE the `(app)` route group on purpose: no `AppShell`, no

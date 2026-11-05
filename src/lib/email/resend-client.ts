@@ -3,7 +3,7 @@ import { Resend } from "resend";
 // Shared Resend plumbing for every email this app sends (the contract email
 // and the payment receipt). Extracted from contract-email.ts unchanged when
 // payment-receipt added the second sender — see that module's header for why
-// the official SDK is used here and plain `fetch` for ManyChat.
+// the official SDK is used here and plain `fetch` for HighLevel.
 
 /** Required because an unverified sender silently bounces every delivery —
  * there is no safe default to fall back to. */

@@ -165,6 +165,9 @@ model Contract {
   driveUploaded      Boolean        @default(false) @map("drive_uploaded")
   calendarCreated    Boolean        @default(false) @map("calendar_created")
   emailSent          Boolean        @default(false) @map("email_sent")
+  // highlevel-whatsapp: enrolled in the HighLevel contract workflow (not a
+  // delivery/read confirmation). Never reset by an edit.
+  whatsappSent       Boolean        @default(false) @map("whatsapp_sent")
   driveFileId        String?        @map("drive_file_id")
   preContractDriveFileId String?    @map("pre_contract_drive_file_id")
   calendarEventId    String?        @map("calendar_event_id")

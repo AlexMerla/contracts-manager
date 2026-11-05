@@ -7,7 +7,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 // 20261102180000_add_payment_receipt. Until it is applied to the database in
 // DATABASE_URL, this whole suite SKIPS itself (probe below) instead of
 // failing; it switches on by itself afterwards. Delivery is mocked — no test
-// may reach Resend or ManyChat — so what is exercised here is the snapshot
+// may reach Resend or HighLevel — so what is exercised here is the snapshot
 // written in registerPayment's transaction, the scoping of resend/download,
 // and the cancelled rules.
 const { mockAuth, mockRunDelivery, mockSendReceipt } = vi.hoisted(() => ({

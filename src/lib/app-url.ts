@@ -79,8 +79,8 @@ export function contractViewerImagePath(
   return `${contractViewerPath(viewerToken)}/image?v=${variant}.${updatedAt.getTime().toString(36)}`;
 }
 
-/** Absolute public viewer URL — what goes in the email body and in ManyChat's
- * contract-link custom field. Always built from `viewerToken`, never from the
+/** Absolute public viewer URL — what goes in the email body and in the
+ * HighLevel `contrato_link` custom field. Always built from `viewerToken`, never from the
  * internal `id` (spec §6.4, §10). */
 export function contractViewerUrl(viewerToken: string): string {
   return `${appBaseUrl()}${contractViewerPath(viewerToken)}`;
@@ -109,7 +109,7 @@ export function paymentReceiptImagePath(receiptToken: string): string {
   return `${paymentReceiptViewerPath(receiptToken)}/image`;
 }
 
-/** Absolute receipt URL — what ManyChat's receipt-link field carries.
+/** Absolute receipt URL — what the HighLevel `comprobante_link` field carries.
  * @throws like `appBaseUrl` when `APP_BASE_URL` is missing or invalid. */
 export function paymentReceiptViewerUrl(receiptToken: string): string {
   return `${appBaseUrl()}${paymentReceiptViewerPath(receiptToken)}`;

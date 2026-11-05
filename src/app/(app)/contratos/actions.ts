@@ -14,9 +14,9 @@ import { priceOrder, type PriceOrderFailure } from "@/lib/contracts/price-order"
 import { sendContractEmail } from "@/lib/email/contract-email";
 import { upsertContractCalendarEvent } from "@/lib/google/calendar";
 import { uploadContractImageToDrive } from "@/lib/google/drive";
-import { triggerContractWhatsApp } from "@/lib/whatsapp/manychat";
 import { prisma } from "@/lib/prisma";
 import { EVENT_TYPE_LABEL } from "@/lib/event-type";
+import { sendContractWhatsApp } from "@/lib/whatsapp/highlevel-whatsapp";
 
 import { createContractPayloadSchema, type CreateContractPayload } from "./nuevo/schema";
 
@@ -313,12 +313,12 @@ export async function retryEmail(contractId: string): Promise<RetryDeliveryStepR
 }
 
 /**
- * Retries ONLY the WhatsApp trigger. There is no `whatsappTriggered` column
- * (product decision, spec §4.2's pattern deliberately not extended here) —
- * so unlike the other three retries, the caller cannot hide this button once
- * it "succeeds"; it stays available indefinitely, same as the copyable link
- * it sits next to (sprint-07 task 5).
+ * highlevel-whatsapp R2 — "Reintentar WhatsApp" (shown while `whatsappSent`
+ * is false) AND "Reenviar por WhatsApp" (always, re-entry sends again). Same
+ * §5 ownership check as every sibling. A cancelled contract, a client with no
+ * valid mobile and an incomplete configuration are refused inside
+ * `sendContractWhatsApp` before any HighLevel call.
  */
 export async function retryWhatsApp(contractId: string): Promise<RetryDeliveryStepResult> {
-  return runContractDeliveryRetry(contractId, triggerContractWhatsApp);
+  return runContractDeliveryRetry(contractId, sendContractWhatsApp);
 }

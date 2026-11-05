@@ -12,7 +12,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 //  * `@/lib/turnstile` — no real network call, no real Cloudflare keys.
 //  * `@/lib/contracts/delivery-pipeline` — MANDATORY: `vitest.config.mts`
 //    loads the real `.env`, so an unmocked run would hit the live
-//    Drive/Calendar/Resend/ManyChat, exactly as contratos-actions.test.ts
+//    Drive/Calendar/Resend/HighLevel, exactly as contratos-actions.test.ts
 //    documents for the internal path.
 const { mockGetHouseUserId } = vi.hoisted(() => ({ mockGetHouseUserId: vi.fn() }));
 vi.mock("@/lib/contracts/house-user", () => ({

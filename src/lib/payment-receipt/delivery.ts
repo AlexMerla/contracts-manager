@@ -1,20 +1,14 @@
 import { paymentReceiptViewerUrl } from "@/lib/app-url";
-import { formatMoney } from "@/lib/contract-template/format-money";
 import {
   stepErrorMessage,
   type ContractDeliveryStepResult,
 } from "@/lib/contracts/delivery-step";
-import { receiptBalanceText, sendReceiptEmailMessage } from "@/lib/email/receipt-email";
+import { sendReceiptEmailMessage } from "@/lib/email/receipt-email";
 import { prisma } from "@/lib/prisma";
-import { sendReceiptWhatsAppMessage } from "@/lib/whatsapp/manychat";
+import { sendReceiptWhatsAppMessage } from "@/lib/whatsapp/highlevel-whatsapp";
 
 import { generateReceiptImage } from "./generate-receipt-image";
 import { parseReceiptSnapshot, type ReceiptSnapshot } from "./snapshot";
-import { RECEIPT_WHATSAPP_ENABLED } from "./whatsapp-switch";
-
-export { RECEIPT_WHATSAPP_ENABLED };
-
-export const RECEIPT_WHATSAPP_PAUSED_MESSAGE = "El envío de comprobantes por WhatsApp está pausado.";
 
 // payment-receipt R2/R3/R4/R7 — the two client channels for a receipt. Same
 // discipline as the contract pipeline (spec §4.2): sequential, in-process, no
@@ -106,19 +100,15 @@ async function sendEmailStep(paymentId: string): Promise<ContractDeliveryStepRes
   return { ok: true };
 }
 
+/** highlevel-whatsapp R3 — un-paused. The cancelled guard ran in
+ * `loadContext`; the mobile and configuration guards run inside
+ * `sendReceiptWhatsAppMessage`, all before any HighLevel call. */
 async function sendWhatsAppStep(paymentId: string): Promise<ContractDeliveryStepResult> {
-  // Paused: refuse before any lookup, configuration or ManyChat call.
-  if (!RECEIPT_WHATSAPP_ENABLED) {
-    return { ok: false, message: RECEIPT_WHATSAPP_PAUSED_MESSAGE };
-  }
   const loaded = await loadContext(paymentId);
   if (!loaded.ok) {
     return loaded;
   }
   const { snapshot, receiptToken, clientMobile } = loaded.context;
-  if (!clientMobile) {
-    return { ok: false, message: "El cliente no tiene celular." };
-  }
 
   let receiptUrl: string;
   try {
@@ -127,13 +117,14 @@ async function sendWhatsAppStep(paymentId: string): Promise<ContractDeliveryStep
     return { ok: false, message: stepErrorMessage(error) };
   }
 
+  // Every printed value comes from the frozen snapshot (R1), never live data.
   const sent = await sendReceiptWhatsAppMessage({
     phone: clientMobile,
     clientName: snapshot.clientName,
-    receiptUrl,
     paymentFolio: snapshot.paymentFolio,
-    amount: formatMoney(snapshot.amountCents / 100),
-    balance: receiptBalanceText(snapshot),
+    amountCents: snapshot.amountCents,
+    balanceCents: snapshot.balanceCents,
+    receiptUrl,
   });
   if (!sent.ok) {
     return sent;
@@ -173,9 +164,6 @@ export interface ReceiptDeliveryFailure {
 export async function runPaymentReceiptDelivery(paymentId: string): Promise<ReceiptDeliveryFailure[]> {
   const failures: ReceiptDeliveryFailure[] = [];
   for (const channel of RECEIPT_CHANNELS) {
-    if (channel === "whatsapp" && !RECEIPT_WHATSAPP_ENABLED) {
-      continue;
-    }
     const result = await sendPaymentReceipt(paymentId, channel);
     if (!result.ok) {
       console.error(`Receipt ${channel} not sent for payment ${paymentId}: ${result.message}`);

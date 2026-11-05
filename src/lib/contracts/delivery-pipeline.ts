@@ -8,7 +8,7 @@ import { sendContractEmail } from "@/lib/email/contract-email";
 import { upsertContractCalendarEvent } from "@/lib/google/calendar";
 import { uploadContractImageToDrive } from "@/lib/google/drive";
 import { prisma } from "@/lib/prisma";
-import { triggerContractWhatsApp } from "@/lib/whatsapp/manychat";
+import { sendContractWhatsApp } from "@/lib/whatsapp/highlevel-whatsapp";
 
 // Spec §4.2 — the sequential, in-process delivery pipeline, extracted VERBATIM
 // from `src/app/(app)/contratos/actions.ts`'s `createContract` so the public
@@ -25,7 +25,7 @@ import { triggerContractWhatsApp } from "@/lib/whatsapp/manychat";
 //    the detail page's manual retry (§4.2 steps 4-5);
 //  * Drive BEFORE Calendar is load-bearing: Calendar's attachment link reads
 //    the `driveFileId` the Drive step writes;
-//  * WhatsApp last, because it is the only step with no status column.
+//  * WhatsApp last (HighLevel workflow enrollment, `whatsappSent` column).
 
 export interface ContractDeliveryPipelineInput {
   contractId: string;
@@ -89,15 +89,15 @@ export async function runContractDeliveryPipeline({
     console.error(`Email delivery threw for contract ${contractId}:`, error);
   }
 
-  // Step 5 — WhatsApp. No status column exists (spec §6.4 defines none); a
-  // failure is only logged, with the copyable public link as the fallback.
+  // Step 5 — WhatsApp through HighLevel. Success sets `whatsappSent`; a
+  // failure leaves it `false` for "Reintentar WhatsApp" on the detail page.
   try {
-    const whatsapp = await triggerContractWhatsApp(contractId);
+    const whatsapp = await sendContractWhatsApp(contractId);
     if (!whatsapp.ok) {
-      console.error(`WhatsApp trigger failed for contract ${contractId}: ${whatsapp.message}`);
+      console.error(`WhatsApp delivery failed for contract ${contractId}: ${whatsapp.message}`);
     }
   } catch (error: unknown) {
-    console.error(`WhatsApp trigger threw for contract ${contractId}:`, error);
+    console.error(`WhatsApp delivery threw for contract ${contractId}:`, error);
   }
 }
 
@@ -107,8 +107,9 @@ export async function runContractDeliveryPipeline({
  * one-try/catch-per-step rules as the creation pipeline above.
  *
  * Deliberately NO email and NO WhatsApp: an edit never re-sends anything to
- * the client automatically (user decision) — staff use "Reenviar". The edit
- * reset `imageGenerated` / `driveUploaded` / `calendarCreated` to `false`, so
+ * the client automatically (user decision) — staff use "Reenviar" — and it
+ * leaves `emailSent` / `whatsappSent` untouched. The edit reset
+ * `imageGenerated` / `driveUploaded` / `calendarCreated` to `false`, so
  * each step that succeeds flips its own flag back and each that fails leaves
  * the detail page's retry row showing.
  */

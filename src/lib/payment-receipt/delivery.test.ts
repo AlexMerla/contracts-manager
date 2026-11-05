@@ -11,7 +11,6 @@ const mocks = vi.hoisted(() => ({
   sendEmail: vi.fn(),
   sendWhatsApp: vi.fn(),
   render: vi.fn(),
-  whatsappEnabled: true,
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -21,14 +20,9 @@ vi.mock("@/lib/email/receipt-email", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/email/receipt-email")>()),
   sendReceiptEmailMessage: mocks.sendEmail,
 }));
-vi.mock("@/lib/whatsapp/manychat", () => ({ sendReceiptWhatsAppMessage: mocks.sendWhatsApp }));
-// The real switch is `false` (paused). Tests drive it through a getter so the
-// re-enabled path stays covered and the paused path is covered explicitly.
-vi.mock("./whatsapp-switch", () => ({
-  get RECEIPT_WHATSAPP_ENABLED() {
-    return mocks.whatsappEnabled;
-  },
-}));
+// The HighLevel exchange itself is covered in
+// src/lib/whatsapp/highlevel-whatsapp.test.ts (mocked fetch).
+vi.mock("@/lib/whatsapp/highlevel-whatsapp", () => ({ sendReceiptWhatsAppMessage: mocks.sendWhatsApp }));
 vi.mock("./generate-receipt-image", () => ({ generateReceiptImage: mocks.render }));
 
 import { runPaymentReceiptDelivery, sendPaymentReceipt } from "./delivery";
@@ -74,7 +68,6 @@ const originalBaseUrl = process.env.APP_BASE_URL;
 const image = Buffer.from([0xff, 0xd8, 0xff]);
 
 beforeEach(() => {
-  mocks.whatsappEnabled = true;
   process.env.APP_BASE_URL = "https://contratos.ejemplo.com";
   mocks.render.mockResolvedValue(image);
   mocks.sendEmail.mockResolvedValue({ ok: true });
@@ -101,16 +94,16 @@ describe("sendPaymentReceipt", () => {
   });
 
   // R4: the link is built from the token, never the internal id.
-  it("sends WhatsApp the public token URL, folio, amount and balance, then flips receipt_whatsapp_sent", async () => {
+  it("sends WhatsApp the public token URL and the snapshot's payment folio, amount and balance, then flips receipt_whatsapp_sent", async () => {
     expect(await sendPaymentReceipt(PAYMENT_ID, "whatsapp")).toEqual({ ok: true });
     const [message] = mocks.sendWhatsApp.mock.calls[0] ?? [];
     expect(message).toEqual({
       phone: "8112345678",
       clientName: "María López García",
-      receiptUrl: `https://contratos.ejemplo.com/comprobantes/view/${TOKEN}`,
       paymentFolio: "PG-0007",
-      amount: "$5,000.00",
-      balance: "$8,000.00",
+      amountCents: 500_000,
+      balanceCents: 800_000,
+      receiptUrl: `https://contratos.ejemplo.com/comprobantes/view/${TOKEN}`,
     });
     expect(message.receiptUrl).not.toContain(PAYMENT_ID);
     expect(mocks.update).toHaveBeenCalledWith({ where: { id: PAYMENT_ID }, data: { receiptWhatsappSent: true } });
@@ -133,11 +126,17 @@ describe("sendPaymentReceipt", () => {
 
   it("skips a channel whose contact datum is missing, leaving its flag false", async () => {
     mocks.findUnique.mockResolvedValue(paymentRow({ clientEmail: null, clientMobile: null }));
+    // The mobile guard lives in sendReceiptWhatsAppMessage (before any call).
+    mocks.sendWhatsApp.mockResolvedValue({
+      ok: false,
+      message: "El cliente no tiene un celular válido para WhatsApp.",
+    });
     expect(await sendPaymentReceipt(PAYMENT_ID, "email")).toEqual({ ok: false, message: "El cliente no tiene correo." });
     expect(await sendPaymentReceipt(PAYMENT_ID, "whatsapp")).toEqual({
       ok: false,
-      message: "El cliente no tiene celular.",
+      message: "El cliente no tiene un celular válido para WhatsApp.",
     });
+    expect(mocks.sendWhatsApp.mock.calls[0]?.[0]).toMatchObject({ phone: null });
     expect(mocks.update).not.toHaveBeenCalled();
   });
 
@@ -198,31 +197,15 @@ describe("runPaymentReceiptDelivery", () => {
   });
 });
 
-// Product decision 2026-11-03: WhatsApp receipts are paused behind one switch.
-describe("RECEIPT_WHATSAPP_ENABLED = false (paused)", () => {
-  beforeEach(() => {
-    mocks.whatsappEnabled = false;
-  });
-
-  it("post-payment delivery never calls ManyChat and reports no WhatsApp failure", async () => {
-    expect(await runPaymentReceiptDelivery(PAYMENT_ID)).toEqual([]);
-    expect(mocks.sendEmail).toHaveBeenCalledTimes(1);
-    expect(mocks.sendWhatsApp).not.toHaveBeenCalled();
+// highlevel-whatsapp S3.4: a HighLevel failure leaves the flag false and
+// never fails the payment.
+describe("receipt WhatsApp through HighLevel", () => {
+  it("reports a 429 as a WhatsApp failure without flipping its flag", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const message = "HighLevel limitó las solicitudes; intente de nuevo en unos minutos.";
+    mocks.sendWhatsApp.mockResolvedValue({ ok: false, message });
+    expect(await runPaymentReceiptDelivery(PAYMENT_ID)).toEqual([{ channel: "whatsapp", message }]);
     expect(mocks.update).toHaveBeenCalledTimes(1);
     expect(mocks.update).toHaveBeenCalledWith({ where: { id: PAYMENT_ID }, data: { receiptEmailSent: true } });
-  });
-
-  it("refuses a WhatsApp resend with no lookup, external call or flag change", async () => {
-    expect(await sendPaymentReceipt(PAYMENT_ID, "whatsapp")).toEqual({
-      ok: false,
-      message: "El envío de comprobantes por WhatsApp está pausado.",
-    });
-    expect(mocks.findUnique).not.toHaveBeenCalled();
-    expect(mocks.sendWhatsApp).not.toHaveBeenCalled();
-    expect(mocks.update).not.toHaveBeenCalled();
-  });
-
-  it("keeps the email resend fully active", async () => {
-    expect(await sendPaymentReceipt(PAYMENT_ID, "email")).toEqual({ ok: true });
   });
 });

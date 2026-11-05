@@ -11,10 +11,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 // columns the sequential, in-process post-confirmation pipeline writes on
 // `contracts` — the same flags the detail page's retry controls read.
 //
-// Sprint 7 task 7 adds `emailSent` as the fourth step. The WhatsApp trigger
-// is deliberately NOT here: spec §6.4 defines no status column for it, so
-// there is nothing truthful to report — the detail page's copyable link
-// (task 5) is its fallback instead.
+// Sprint 7 task 7 adds `emailSent` as the fourth step; highlevel-whatsapp
+// adds `whatsappSent` as the fifth (enrollment in the HighLevel workflow).
 export interface DeliverySteps {
   imageGenerated: boolean;
   driveUploaded: boolean;
@@ -29,10 +27,15 @@ export interface DeliverySteps {
    * pendientes" count, training staff to ignore the indicator entirely.
    */
   hasClientEmail: boolean;
+  /** highlevel-whatsapp: enrolled in the HighLevel contract workflow. */
+  whatsappSent: boolean;
+  /** Same "not applicable" rule as `hasClientEmail`: without a valid Mexican
+   * mobile (`normalizeMexicanMobile`) the WhatsApp step can never succeed. */
+  hasClientMobile: boolean;
 }
 
 // Order matches the pipeline's own execution order (image → Drive → Calendar
-// → correo) and the order of the retry buttons on the contract detail page,
+// → correo → WhatsApp) and the order of the retry buttons on the contract detail page,
 // so the tooltip reads in the same sequence the operator sees when they open
 // it.
 const DELIVERY_STEPS: { key: keyof DeliverySteps; label: string }[] = [
@@ -40,7 +43,14 @@ const DELIVERY_STEPS: { key: keyof DeliverySteps; label: string }[] = [
   { key: "driveUploaded", label: "Respaldo en Drive" },
   { key: "calendarCreated", label: "Evento en Calendar" },
   { key: "emailSent", label: "Correo al cliente" },
+  { key: "whatsappSent", label: "WhatsApp al cliente" },
 ];
+
+/** A channel whose contact datum is missing is not applicable, not pending. */
+const NOT_APPLICABLE: Partial<Record<keyof DeliverySteps, (steps: DeliverySteps) => boolean>> = {
+  emailSent: (steps) => !steps.hasClientEmail,
+  whatsappSent: (steps) => !steps.hasClientMobile,
+};
 
 /**
  * Pending step labels, in pipeline order. Pure and exported so both the list's
@@ -49,7 +59,7 @@ const DELIVERY_STEPS: { key: keyof DeliverySteps; label: string }[] = [
  */
 export function pendingDeliverySteps(steps: DeliverySteps): string[] {
   return DELIVERY_STEPS.filter(({ key }) => {
-    if (key === "emailSent" && !steps.hasClientEmail) {
+    if (NOT_APPLICABLE[key]?.(steps)) {
       return false;
     }
     return !steps[key];
@@ -65,7 +75,7 @@ export function hasPendingDelivery(steps: DeliverySteps): boolean {
 /**
  * Read-only indicator. Deliberately has NO retry action: the detail page
  * already owns one control per step (`RetryImageButton` / `RetryStepButton`),
- * and duplicating them per row would put four destructive-ish network calls
+ * and duplicating them per row would put five destructive-ish network calls
  * inside a scannable table. The tooltip points at the detail page instead.
  */
 export function DeliveryStatus(steps: DeliverySteps) {

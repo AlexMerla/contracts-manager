@@ -25,7 +25,7 @@ interface RetryStepButtonProps {
 
 export function RetryStepButton({ contractId, step, label }: RetryStepButtonProps) {
   const { isRetrying, error, justSucceeded, run } = useDeliveryRetry(contractId, step);
-  const { label: defaultLabel, pendingLabel } = DELIVERY_STEPS[step];
+  const { label: defaultLabel, pendingLabel, successLabel } = DELIVERY_STEPS[step];
 
   return (
     <div className="flex flex-col items-end gap-1">
@@ -37,7 +37,7 @@ export function RetryStepButton({ contractId, step, label }: RetryStepButtonProp
           {error}
         </p>
       )}
-      {justSucceeded && !error && <p className="text-xs font-normal text-success">Enviado.</p>}
+      {justSucceeded && !error && <p className="text-xs font-normal text-success">{successLabel}</p>}
     </div>
   );
 }

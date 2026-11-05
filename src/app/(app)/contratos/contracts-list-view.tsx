@@ -52,7 +52,7 @@ export interface ContractRow {
    * than by `createdByName` so renaming that user in /usuarios can never
    * silently drop the marker. */
   createdByHouseUser: boolean;
-  // Spec §4.2 point 4 — the four post-confirmation pipeline flags, surfaced
+  // Spec §4.2 point 4 — the five post-confirmation pipeline flags, surfaced
   // in the list so an incomplete step is visible without opening the contract.
   imageGenerated: boolean;
   driveUploaded: boolean;
@@ -60,6 +60,9 @@ export interface ContractRow {
   emailSent: boolean;
   /** Not a status column — see `DeliverySteps` in @/components/delivery-status. */
   hasClientEmail: boolean;
+  whatsappSent: boolean;
+  /** Not a status column — see `DeliverySteps` in @/components/delivery-status. */
+  hasClientMobile: boolean;
 }
 
 export interface ContractsFilters {
@@ -372,6 +375,8 @@ export function ContractsListView({
                       calendarCreated={contract.calendarCreated}
                       emailSent={contract.emailSent}
                       hasClientEmail={contract.hasClientEmail}
+                      whatsappSent={contract.whatsappSent}
+                      hasClientMobile={contract.hasClientMobile}
                     />
                   </TableCell>
                   <TableCell className="text-right">

@@ -14,8 +14,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-import { RECEIPT_WHATSAPP_ENABLED } from "@/lib/payment-receipt/whatsapp-switch";
-
 import { resendPaymentReceipt } from "./actions";
 
 import type { ResendPaymentReceiptValues } from "./schema";
@@ -50,8 +48,7 @@ export function PaymentReceiptMenu({
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
 
-  const showWhatsApp = RECEIPT_WHATSAPP_ENABLED && hasMobile;
-  const showResend = canResend && (hasEmail || showWhatsApp);
+  const showResend = canResend && (hasEmail || hasMobile);
 
   async function resend(channel: Channel) {
     setBusy(true);
@@ -94,7 +91,7 @@ export function PaymentReceiptMenu({
                     Por correo
                   </DropdownMenuItem>
                 )}
-                {showWhatsApp && (
+                {hasMobile && (
                   <DropdownMenuItem disabled={busy} onClick={() => resend("whatsapp")}>
                     Por WhatsApp
                   </DropdownMenuItem>

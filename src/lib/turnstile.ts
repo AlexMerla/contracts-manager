@@ -1,8 +1,8 @@
 // Cloudflare Turnstile server-side verification (public-precontract Q3).
 //
 // First bot-check in this codebase. Deliberately NO vendor SDK: the whole
-// contract is one form-encoded POST, exactly like `manyChatFetch` in
-// `@/lib/whatsapp/manychat` and `googleApiFetch` in `@/lib/google/api-client`
+// contract is one form-encoded POST, exactly like `highLevelFetch` in
+// `@/lib/highlevel/client` and `googleApiFetch` in `@/lib/google/api-client`
 // — this project's established pattern is a thin `fetch` wrapper that turns
 // every failure into a value rather than pulling in a dependency.
 //

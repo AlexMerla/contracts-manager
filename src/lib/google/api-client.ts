@@ -2,7 +2,7 @@ import { getDecryptedRefreshToken, markGoogleConnectionError } from "@/lib/googl
 import { GoogleRefreshError, refreshGoogleAccessToken } from "@/lib/google/oauth";
 
 // Sprint-07: the step-result type moved to `@/lib/contracts/delivery-step` so
-// the non-Google steps (Resend email, ManyChat) can share it without
+// the non-Google steps (Resend email, HighLevel WhatsApp) can share it without
 // importing a Google module. Re-exported here so every existing import site
 // (`actions.ts`, `drive.ts`, `calendar.ts`) keeps compiling unchanged.
 export type { ContractDeliveryStepResult } from "@/lib/contracts/delivery-step";

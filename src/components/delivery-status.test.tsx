@@ -15,6 +15,7 @@ const IMAGE_LABEL = "Imagen del contrato";
 const DRIVE_LABEL = "Respaldo en Drive";
 const CALENDAR_LABEL = "Evento en Calendar";
 const EMAIL_LABEL = "Correo al cliente";
+const WHATSAPP_LABEL = "WhatsApp al cliente";
 
 const COMPLETE: DeliverySteps = {
   imageGenerated: true,
@@ -22,6 +23,8 @@ const COMPLETE: DeliverySteps = {
   calendarCreated: true,
   emailSent: true,
   hasClientEmail: true,
+  whatsappSent: true,
+  hasClientMobile: true,
 };
 
 describe("pendingDeliverySteps / hasPendingDelivery (spec §4.2 point 4)", () => {
@@ -40,19 +43,22 @@ describe("pendingDeliverySteps / hasPendingDelivery (spec §4.2 point 4)", () =>
     expect(hasPendingDelivery(steps)).toBe(true);
   });
 
-  it("returns all four labels when every step is pending", () => {
+  it("returns all five labels when every step is pending", () => {
     const steps: DeliverySteps = {
       imageGenerated: false,
       driveUploaded: false,
       calendarCreated: false,
       emailSent: false,
       hasClientEmail: true,
+      whatsappSent: false,
+      hasClientMobile: true,
     };
     expect(pendingDeliverySteps(steps)).toEqual([
       IMAGE_LABEL,
       DRIVE_LABEL,
       CALENDAR_LABEL,
       EMAIL_LABEL,
+      WHATSAPP_LABEL,
     ]);
     expect(hasPendingDelivery(steps)).toBe(true);
   });
@@ -79,6 +85,19 @@ describe("pendingDeliverySteps / hasPendingDelivery (spec §4.2 point 4)", () =>
       hasClientEmail: false,
     };
     expect(pendingDeliverySteps(steps)).toEqual([DRIVE_LABEL]);
+  });
+
+  // highlevel-whatsapp: WhatsApp is the fifth step, with the same "no
+  // contact datum = not applicable" rule as email.
+  it("reports a pending WhatsApp step last", () => {
+    const steps: DeliverySteps = { ...COMPLETE, emailSent: false, whatsappSent: false };
+    expect(pendingDeliverySteps(steps)).toEqual([EMAIL_LABEL, WHATSAPP_LABEL]);
+  });
+
+  it("omits the WhatsApp step when the client has no valid mobile", () => {
+    const steps: DeliverySteps = { ...COMPLETE, whatsappSent: false, hasClientMobile: false };
+    expect(pendingDeliverySteps(steps)).toEqual([]);
+    expect(hasPendingDelivery(steps)).toBe(false);
   });
 });
 

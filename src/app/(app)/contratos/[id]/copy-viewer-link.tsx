@@ -6,9 +6,9 @@ import { Check, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 
-// Sprint 7 task 5 — the manual fallback for the ManyChat trigger, which has
-// no status column and therefore no structured retry (spec §6.4 defines no
-// `whatsapp_triggered`). The link must be visible and copyable on EVERY
+// Sprint 7 task 5 — the manual fallback for WhatsApp delivery (no valid
+// mobile, HighLevel down, or the client simply asks again on another
+// channel). The link must be visible and copyable on EVERY
 // contract, succeeded or not, so this component is rendered unconditionally
 // by the detail page rather than gated on any flag.
 

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { scopeToOwner } from "@/lib/authorization";
 import { HOUSE_USER_EMAIL } from "@/lib/contracts/house-user";
+import { normalizeMexicanMobile } from "@/lib/phone";
 import { prisma } from "@/lib/prisma";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/page-header";
@@ -83,6 +84,10 @@ export default async function ContratosPage({ searchParams }: ContratosPageProps
     // Not a status column: a contract with no `clientEmail` has no email
     // step at all, so it must not be counted as pending (see `DeliverySteps`).
     hasClientEmail: contract.clientEmail != null && contract.clientEmail.trim() !== "",
+    whatsappSent: contract.whatsappSent,
+    // Same rule as `hasClientEmail`: no valid mobile, no WhatsApp step.
+    hasClientMobile:
+      contract.clientMobile != null && normalizeMexicanMobile(contract.clientMobile) !== null,
   }));
 
   const { estado, q, tipoEvento, listaPrecios, estatusPago, pendientes } = await searchParams;

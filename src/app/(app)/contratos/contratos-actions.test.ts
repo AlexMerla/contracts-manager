@@ -42,10 +42,10 @@ vi.mock("@/lib/google/calendar", () => ({
 // Sprint 7 task 6 — same hard safety requirement as Drive/Calendar above,
 // and for the same reason: `vitest.config.mts` loads the real `.env` through
 // `dotenv/config`, so the LIVE production `RESEND_API_KEY` and
-// `MANYCHAT_API_KEY` are in `process.env` while this suite runs. Unmocked,
+// `HIGHLEVEL_PIT_TOKEN` are in `process.env` while this suite runs. Unmocked,
 // every run would email a fake contract to `cliente@example.com` through the
-// business's verified sending domain and create a junk WhatsApp subscriber in
-// the business's real ManyChat account. These two stubs are not optional.
+// business's verified sending domain and write to a contact in the
+// business's real HighLevel (ru42) CRM. These two stubs are not optional.
 const { mockSendContractEmail, mockTriggerWhatsApp } = vi.hoisted(() => ({
   mockSendContractEmail: vi.fn(),
   mockTriggerWhatsApp: vi.fn(),
@@ -53,8 +53,8 @@ const { mockSendContractEmail, mockTriggerWhatsApp } = vi.hoisted(() => ({
 vi.mock("@/lib/email/contract-email", () => ({
   sendContractEmail: mockSendContractEmail,
 }));
-vi.mock("@/lib/whatsapp/manychat", () => ({
-  triggerContractWhatsApp: mockTriggerWhatsApp,
+vi.mock("@/lib/whatsapp/highlevel-whatsapp", () => ({
+  sendContractWhatsApp: mockTriggerWhatsApp,
 }));
 
 import { prisma } from "@/lib/prisma";
@@ -64,6 +64,7 @@ import {
   retryCalendarEvent,
   retryDriveUpload,
   retryEmail,
+  retryWhatsApp,
   type CreateContractResult,
 } from "@/app/(app)/contratos/actions";
 import type {
@@ -602,5 +603,38 @@ describe("createContract", () => {
 
     mockSendContractEmail.mockResolvedValue({ ok: false, message: "Resend caído" });
     expect(await retryEmail(contractId)).toEqual({ error: "Resend caído" });
+  });
+
+  // highlevel-whatsapp S2.7/S2.9 — same shared retry body as email.
+  it("retryWhatsApp re-runs only the WhatsApp step and rejects a non-owning session", async () => {
+    const result = await createContract(basePayload());
+    const { contractId } = result as Extract<CreateContractResult, { success: true }>;
+    createdContractIds.push(contractId);
+    mockSendContractEmail.mockClear();
+    mockTriggerWhatsApp.mockClear();
+
+    mockAuth.mockResolvedValueOnce({
+      user: {
+        id: otherUserId,
+        role: "normal" as const,
+        name: "Other",
+        email: "other-test@example.com",
+      },
+      expires: new Date(Date.now() + 60_000).toISOString(),
+    });
+    expect("error" in (await retryWhatsApp(contractId))).toBe(true);
+    expect(mockTriggerWhatsApp).not.toHaveBeenCalled();
+
+    expect(await retryWhatsApp(contractId)).toEqual({ success: true });
+    expect(mockTriggerWhatsApp).toHaveBeenCalledWith(contractId);
+    expect(mockSendContractEmail).not.toHaveBeenCalled();
+
+    mockTriggerWhatsApp.mockResolvedValueOnce({
+      ok: false,
+      message: "HighLevel no está disponible por el momento.",
+    });
+    expect(await retryWhatsApp(contractId)).toEqual({
+      error: "HighLevel no está disponible por el momento.",
+    });
   });
 });

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Send } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -20,7 +21,8 @@ import { DELIVERY_STEPS, useDeliveryRetry } from "./use-delivery-retry";
  * respaldos", next to the thing they fix.
  *
  * Each item is gated on the contact datum its channel needs: a contract with
- * no `clientEmail` has no email to resend, and offering an action that can
+ * no `clientEmail` has no email to resend (nor one without a valid mobile a
+ * WhatsApp), and offering an action that can
  * only ever fail is noise (same rule the detail page applies to the email
  * retry button and `DeliveryStatus` applies to the list indicator). When
  * neither exists the menu renders nothing at all.
@@ -34,6 +36,8 @@ interface ResendMenuProps {
 export function ResendMenu({ contractId, hasEmail, hasMobile }: ResendMenuProps) {
   const email = useDeliveryRetry(contractId, "email");
   const whatsapp = useDeliveryRetry(contractId, "whatsapp");
+  // Which channel the success line speaks for: each has its own copy.
+  const [lastChannel, setLastChannel] = useState<"email" | "whatsapp">("email");
 
   if (!hasEmail && !hasMobile) {
     return null;
@@ -41,9 +45,10 @@ export function ResendMenu({ contractId, hasEmail, hasMobile }: ResendMenuProps)
 
   const busy = email.isRetrying || whatsapp.isRetrying;
   // One shared feedback line: only one item can be running at a time, so
-  // whichever channel last reported wins. Errors outrank successes.
-  const error = email.error ?? whatsapp.error;
-  const succeeded = !error && (email.justSucceeded || whatsapp.justSucceeded);
+  // the channel clicked last is the one reported.
+  const lastRun = lastChannel === "whatsapp" ? whatsapp : email;
+  const { error } = lastRun;
+  const succeeded = !error && lastRun.justSucceeded ? DELIVERY_STEPS[lastChannel].successLabel : null;
 
   return (
     <div className="flex flex-col items-end gap-1">
@@ -54,12 +59,24 @@ export function ResendMenu({ contractId, hasEmail, hasMobile }: ResendMenuProps)
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           {hasEmail && (
-            <DropdownMenuItem disabled={busy} onClick={email.run}>
+            <DropdownMenuItem
+              disabled={busy}
+              onClick={() => {
+                setLastChannel("email");
+                void email.run();
+              }}
+            >
               {DELIVERY_STEPS.email.menuLabel}
             </DropdownMenuItem>
           )}
           {hasMobile && (
-            <DropdownMenuItem disabled={busy} onClick={whatsapp.run}>
+            <DropdownMenuItem
+              disabled={busy}
+              onClick={() => {
+                setLastChannel("whatsapp");
+                void whatsapp.run();
+              }}
+            >
               {DELIVERY_STEPS.whatsapp.menuLabel}
             </DropdownMenuItem>
           )}
@@ -70,7 +87,7 @@ export function ResendMenu({ contractId, hasEmail, hasMobile }: ResendMenuProps)
           {error}
         </p>
       )}
-      {succeeded && <p className="text-xs font-normal text-success">Enviado.</p>}
+      {succeeded && <p className="text-xs font-normal text-success">{succeeded}</p>}
     </div>
   );
 }

@@ -4,9 +4,9 @@
  * action.
  *
  * Lives here, not in `@/lib/google/api-client`, because sprint-07 adds two
- * NON-Google steps (Resend, ManyChat) that must speak the same contract:
+ * NON-Google steps (Resend, HighLevel) that must speak the same contract:
  * spec §4.2 requires every step to convert its own failures into a value
- * instead of throwing, so a Resend outage can't stop the ManyChat trigger and
+ * instead of throwing, so a Resend outage can't stop the WhatsApp step and
  * neither can stop contract creation from returning success.
  * `api-client.ts` re-exports this type, so every pre-existing import of it
  * keeps working unchanged.

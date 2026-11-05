@@ -10,7 +10,7 @@ import { findPublicReceipt } from "@/lib/payment-receipt/public-receipt";
 import { receiptFileName } from "@/lib/payment-receipt/snapshot";
 
 // payment-receipt R5 / spec §10 — the unauthenticated receipt viewer: the
-// destination of the WhatsApp link ManyChat sends after a payment. Outside the
+// destination of the WhatsApp link sent through HighLevel after a payment. Outside the
 // `(app)` group on purpose (no shell, no session), and listed in
 // src/proxy.ts's PUBLIC_PREFIXES.
 //

@@ -37,11 +37,11 @@ const PRECONTRACT_CONFIRMATION_TEMPLATE_ID = "precontract-confirmation-1";
 // and a second OAuth implementation) does not apply here: `resend` is a thin
 // typed client over one endpoint, it already returns `{ data, error }`
 // instead of throwing for an API error, and multipart attachment encoding is
-// the one part worth not reimplementing. ManyChat keeps plain `fetch` because
-// it has no maintained SDK — so the two integrations share the RESULT TYPE
-// (`ContractDeliveryStepResult`) and nothing else. A single generic
-// "external call" helper over an SDK and a bespoke `{status:"success"}`
-// envelope would abstract two things that have nothing in common.
+// the one part worth not reimplementing. HighLevel (WhatsApp) uses plain
+// `fetch` (`@/lib/highlevel/client`) for three small calls — so the two
+// integrations share the RESULT TYPE (`ContractDeliveryStepResult`) and
+// nothing else. A single generic "external call" helper over an SDK and a
+// bespoke REST wrapper would abstract two things that have nothing in common.
 
 /**
  * Sends the fixed-content "precontract-confirmation" Resend Template to
@@ -51,8 +51,8 @@ const PRECONTRACT_CONFIRMATION_TEMPLATE_ID = "precontract-confirmation-1";
  * (spec §4.2) — the confirm pipeline and the retry action both read the
  * returned result instead.
  *
- * The public viewer link is intentionally NOT included here — ManyChat
- * already sends it over WhatsApp (spec §3), and ops can always copy it from
+ * The public viewer link is intentionally NOT included here — WhatsApp
+ * (through HighLevel) already sends it (spec §3), and ops can always copy it from
  * the contract detail page (sprint-07 task 5). The attachment follows the
  * status at SEND time: `Precontrato<folio>.jpg` while `pre_contract`,
  * `Contrato<folio>.jpg` once confirmed or completed — so a "Reenviar" after
@@ -65,7 +65,7 @@ const PRECONTRACT_CONFIRMATION_TEMPLATE_ID = "precontract-confirmation-1";
  * `createContract`'s confirm pipeline, so there is no automatic-retry path
  * that could double-send on its own. Every OTHER call comes from the
  * "Reenviar" menu's explicit, human click — a real request to resend, which
- * must actually resend, same as `triggerContractWhatsApp` has never gated on
+ * must actually resend, same as `sendContractWhatsApp` has never gated on
  * a "sent already" flag. `emailSent` still gets set to `true` after every
  * successful send; it is read elsewhere only as "has this ever gone out"
  * (the list's pending-steps indicator), never as a block.
