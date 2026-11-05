@@ -20,7 +20,7 @@ Expected volume: **~2 contracts per week**. This number drives several architect
 **Goals**
 - Centralize contract creation, payment tracking, and package/price administration.
 - Generate the contract as an image on the client's existing JPEG template.
-- Deliver the contract by email and by WhatsApp (via ManyChat), backed up to Google Drive and Google Calendar.
+- Deliver the contract by email and by WhatsApp (via HighLevel), backed up to Google Drive and Google Calendar.
 - Support two user roles with different data visibility.
 - Issue a frozen payment receipt (comprobante) as a JPG for every registered payment, deliverable to the client by email and by a WhatsApp link, and downloadable by staff at any time.
 
@@ -44,7 +44,7 @@ Expected volume: **~2 contracts per week**. This number drives several architect
 | Auth | Auth.js (NextAuth) — Credentials provider only | Email + password only, no Google sign-in for users. Not to be confused with the separate Google Master connection, see §4.3 |
 | Contract image generation | `@napi-rs/canvas` | Chosen over `canvas` for serverless compatibility on Vercel; chosen over Puppeteer/HTML rendering because the base template is a fixed JPEG, not a layout that needs a browser engine |
 | Email delivery | Resend | Free tier sufficient for volume |
-| WhatsApp delivery | ManyChat (existing client integration) | The app's responsibility is only to produce the public viewer link; ManyChat handles the actual WhatsApp send |
+| WhatsApp delivery | HighLevel REST API v2 (ru42, Private Integration Token) | The app produces the public link, upserts the contact by phone with its own custom fields and enrolls it in a dedicated HighLevel workflow whose WhatsApp action uses a Meta-approved template; HighLevel performs the send. Never the MCP endpoint at runtime |
 | Calendar UI | react-big-calendar or FullCalendar | |
 | Report export | exceljs | Excel export only, no PDF export required |
 | Hosting | Vercel (free tier) | |
@@ -65,7 +65,7 @@ Backend API (Next.js API routes / route handlers)
         ├─→ PostgreSQL (via Prisma)         — synchronous, always
         ├─→ Google APIs (Drive, Calendar)   — synchronous, sequential, see §4.2
         ├─→ Resend (email)                  — synchronous, sequential, see §4.2
-        └─→ ManyChat (WhatsApp trigger)     — synchronous, sequential, see §4.2
+        └─→ HighLevel (WhatsApp workflow enrollment) — synchronous, sequential, see §4.2
 ```
 
 ### 4.2 No job queue — sequential in-process processing with retry-by-status
@@ -75,8 +75,8 @@ Backend API (Next.js API routes / route handlers)
 When a contract is confirmed (last step of the creation flow, §8):
 
 1. The API route creates the `Contract` row immediately (status columns default to `false`/pending).
-2. In the **same request**, it runs each delivery step in sequence: generate image → upload to Drive → create Calendar event → send email → (client opens WhatsApp link generated for ManyChat).
-3. After each step succeeds, the corresponding boolean column on `contracts` is set to `true` (`imageGenerated`, `driveUploaded`, `calendarCreated`, `emailSent`; see §6.4 for full column list).
+2. In the **same request**, it runs each delivery step in sequence: generate image → upload to Drive → create Calendar event → send email → send WhatsApp (HighLevel).
+3. After each step succeeds, the corresponding boolean column on `contracts` is set to `true` (`imageGenerated`, `driveUploaded`, `calendarCreated`, `emailSent`, `whatsappSent`; see §6.4 for full column list).
 4. If a step throws, the response still returns success for contract creation (the contract row exists), but reports which step failed. The contract list UI must show a visual indicator for any contract with an incomplete step.
 5. Each status column has a **manual retry** action in the UI (e.g., a "retry Drive upload" button on the contract detail page) that re-runs only that step, idempotently. Retrying must not create duplicate Drive files, duplicate Calendar events, or duplicate emails — check the relevant ID/status column before acting.
 
@@ -84,7 +84,9 @@ Status changes never trigger delivery. Registering the deposit (pre_contract →
 
 **Payment receipts follow the same pattern.** After a payment commits, and only if "Enviar comprobante al cliente" was checked, the receipt email and WhatsApp link are sent sequentially in-process; each result is stored in `payments.receipt_email_sent` / `receipt_whatsapp_sent` and each has a per-payment manual "Reenviar comprobante" action. Receipt failures never fail the payment. Receipts are never uploaded to Drive and never touch Calendar; the on-demand "Descargar comprobante" action is the backup. A cancelled contract's receipts are never sent (both channels refuse, before any external call), but staff can still download them.
 
-**WhatsApp delivery of receipts is currently paused** (product decision 2026-11-03; it will change later). A single switch, `RECEIPT_WHATSAPP_ENABLED` in `src/lib/payment-receipt/whatsapp-switch.ts` (default `false`), turns it off: post-payment delivery never calls ManyChat for receipts, the "Por WhatsApp" resend item and the WhatsApp badge are not rendered, and a WhatsApp resend is refused with no external call. Email delivery and "Descargar comprobante" are unaffected. The ManyChat receipt module, `receipt_whatsapp_sent` and the public viewer (§10) are kept so re-enabling is flipping the switch and setting the `MANYCHAT_*RECEIPT*` variables, which are unused meanwhile.
+Receipt WhatsApp is active again (change `highlevel-whatsapp`, 2026-11-03): the `RECEIPT_WHATSAPP_ENABLED` switch is removed; the badge and "Por WhatsApp" resend item are shown; a cancelled contract's receipt WhatsApp is refused before any external call. The receipt workflow's fields are `comprobante_cliente`, `comprobante_folio` (the payment folio, e.g. `PG-0007`), `comprobante_monto`, `comprobante_saldo` ("Liquidado" when nothing is owed) and `comprobante_link`, all read from the frozen receipt snapshot; money is preformatted es-MX (`$1,500.00 MXN`).
+
+**WhatsApp via HighLevel.** Step 5 upserts the contact by phone (E.164 `+52` + 10 digits — the format ru42 stores WhatsApp contacts in; `+521…` would create a duplicate contact), writes only the app's own custom fields (`contrato_cliente`, `contrato_folio`, `contrato_link` / the `comprobante_*` set) and adds the contact to the app's dedicated workflow; `contracts.whatsapp_sent` / `payments.receipt_whatsapp_sent` become true when the contact is enrolled. "Sent" means handed to the HighLevel workflow, not delivered or read. Cancelled contracts, clients without a valid mobile, and incomplete configuration are refused server-side before any external call. Retry is manual ("Reintentar WhatsApp" while pending, "Reenviar por WhatsApp" any time — the workflows allow re-entry, so a resend sends again), never automatic; there is no queue. Editing a contract neither sends WhatsApp nor resets `whatsapp_sent`. One template and one workflow serve every contract status: the link shows the image for the status at open time (§7). **Marketing-owned data rule:** the CRM's pre-existing workflows, fields, tags, templates and contact data belong to marketing and are never modified or deleted; the upsert payload is exactly `{locationId, phone, customFields}` (our keys only), `tags` is never sent, and the contact name is written only when HighLevel reports the contact as newly created (`new === true`).
 
 This pattern (status columns + manual retry) is the intended replacement for a queue's retry mechanism. Do not introduce a queue, cron job, or background worker to "improve" this — it is a deliberate simplification given the low volume.
 
@@ -190,6 +192,7 @@ Table names: `snake_case`, plural. Prisma models: `PascalCase` singular, mapped 
 | drive_uploaded | boolean, default false | |
 | calendar_created | boolean, default false | |
 | email_sent | boolean, default false | |
+| whatsapp_sent | boolean, default false | contract enrolled in the HighLevel contract workflow (not delivery confirmation); never reset by an edit. The migration backfilled every contract that existed at deploy time to `true` (they predate the integration), so the pending indicator only tracks new sends; staff can still "Reenviar" |
 | drive_file_id | text, nullable | |
 | calendar_event_id | text, nullable | |
 | price_list_id | uuid, FK → price_lists | |
@@ -270,7 +273,7 @@ Records which option the client actually chose, for services that have `options`
 | receipt_token | text, unique, not null | Unguessable (≥128-bit CSPRNG) public identifier of the receipt (§10); never the internal id |
 | receipt_snapshot | jsonb, nullable | Versioned snapshot of every value printed on the receipt, written in the registering transaction; null only for payments that predate receipts, which have no receipt |
 | receipt_email_sent | boolean, default false | |
-| receipt_whatsapp_sent | boolean, default false | |
+| receipt_whatsapp_sent | boolean, default false | enrolled in the HighLevel receipt workflow |
 
 ### 6.12 `notes`
 | Column | Type | Notes |
@@ -345,7 +348,7 @@ A `PUBLIC_PRECONTRACT_ENABLED` environment flag (§11) gates the action independ
 3. **Selections.** Required service choices are re-validated against live data; invalid or missing ones must be re-chosen.
 4. **Amounts.** Total, balance recomputed. Total ≥ payments. Deposit locked after the first payment. `payment_status` is recomputed without regressing (a `deposit_paid`/`partial` contract stays so unless it becomes `paid_in_full`); `pending → deposit_paid` also promotes `pre_contract → confirmed`, as in a payment.
 5. **Audit.** One transaction under `SELECT … FOR UPDATE`; writes a Note "Contrato editado por {nombre}: {campos}".
-6. **Side effects (post-commit, sequential, fail-open).** Regenerate image; overwrite the Drive files in place (same file ids, so the Calendar attachment link stays valid; create on missing/404); update the Calendar event. Email/WhatsApp are NOT sent automatically — staff use "Reenviar". `drive_uploaded` is reset by the edit and the Drive retry uses the replace path.
+6. **Side effects (post-commit, sequential, fail-open).** Regenerate image; overwrite the Drive files in place (same file ids, so the Calendar attachment link stays valid; create on missing/404); update the Calendar event. Email/WhatsApp are NOT sent automatically and `whatsapp_sent` is not reset — staff use "Reenviar". `drive_uploaded` is reset by the edit and the Drive retry uses the replace path.
 
 **Error copy (es-MX):**
 
@@ -371,18 +374,19 @@ Filterable by date range, price list, creating user, client, and event type (per
 
 Three routes are reachable with no authentication, and only three: the contract viewer, the payment-receipt viewer, and the pre-contract flow (§8.1). All are registered in `src/proxy.ts`'s `PUBLIC_PREFIXES`; anything absent from that list redirects to `/login`.
 
-**Public contract viewer.** Route: `/contracts/view/[viewerToken]`, no authentication. Displays the generated contract image (and/or the underlying data) for the client to review. This is the destination of the link ManyChat sends over WhatsApp. Must not expose any other contract's data or any internal numeric ID.
+**Public contract viewer.** Route: `/contracts/view/[viewerToken]`, no authentication. Displays the generated contract image (and/or the underlying data) for the client to review. This is the destination of the link sent over WhatsApp through HighLevel (the only value passed is this URL, built from `viewer_token`). Must not expose any other contract's data or any internal numeric ID.
 
 The viewer shows the variant for the contract's current status (§7) — title, heading, alt text, image and download filename all say "Precontrato" or "Contrato" accordingly — and returns a generic 404 for a cancelled contract, on both the page and its `/image` sub-route. The image response is `Cache-Control: private` (never shared caches); the page versions the image URL by variant so a status change is never masked by a cached copy.
 
-**Public payment-receipt viewer.** Route: `/comprobantes/view/[receiptToken]` (page) and `/comprobantes/view/[receiptToken]/image` (JPG, `Cache-Control: private`), no authentication, registered in `PUBLIC_PREFIXES`. Destination of the link ManyChat sends over WhatsApp after a payment. Identified solely by `payments.receipt_token`; never exposes the payment's or contract's internal id. Returns a generic 404, identical to an unknown token, when the token is unknown, the payment's contract is `cancelled`, or the payment has no receipt.
+**Public payment-receipt viewer.** Route: `/comprobantes/view/[receiptToken]` (page) and `/comprobantes/view/[receiptToken]/image` (JPG, `Cache-Control: private`), no authentication, registered in `PUBLIC_PREFIXES`. Destination of the link sent over WhatsApp through HighLevel after a payment (the only value passed is this URL, built from `receipt_token`). Identified solely by `payments.receipt_token`; never exposes the payment's or contract's internal id. Returns a generic 404, identical to an unknown token, when the token is unknown, the payment's contract is `cancelled`, or the payment has no receipt.
 
 ## 11. Hosting and environment
 
 - Vercel free tier for the Next.js app (frontend + API routes).
 - PostgreSQL via Neon or Supabase free tier.
 - Resend free tier for email.
-- Environment variables must include (at minimum): `DATABASE_URL`, `NEXTAUTH_SECRET`, `GOOGLE_MASTER_CLIENT_ID`/`SECRET` (Flow B, §4.3 — the only Google OAuth credentials the system needs), `RESEND_API_KEY`, `MIN_CONTRACT_ADVANCE`, `MAX_CONTRACT_ADVANCE`, `TOTAL_CONTRACT_MIN`, `TOKEN_ENCRYPTION_KEY` (for `google_connection.refresh_token_encrypted`), `TURNSTILE_SECRET_KEY`, `NEXT_PUBLIC_TURNSTILE_SITE_KEY`, `PUBLIC_PRECONTRACT_ENABLED` (§8.1 — the public pre-contract flow's Cloudflare Turnstile keys and its independent kill switch, default disabled), `RESEND_RECEIPT_TEMPLATE_ID`, `MANYCHAT_RECEIPT_FLOW_ID`, `MANYCHAT_FIELD_RECEIPT_LINK`, `MANYCHAT_FIELD_RECEIPT_FOLIO`, `MANYCHAT_FIELD_RECEIPT_AMOUNT`, `MANYCHAT_FIELD_RECEIPT_BALANCE` (payment receipts; the ManyChat set is all-or-nothing; the ManyChat flow must open with an approved WhatsApp template to reach clients outside the 24 h window; the Resend template and the ManyChat flow/fields are created by the business outside the repo).
+- Environment variables must include (at minimum): `DATABASE_URL`, `NEXTAUTH_SECRET`, `GOOGLE_MASTER_CLIENT_ID`/`SECRET` (Flow B, §4.3 — the only Google OAuth credentials the system needs), `RESEND_API_KEY`, `MIN_CONTRACT_ADVANCE`, `MAX_CONTRACT_ADVANCE`, `TOTAL_CONTRACT_MIN`, `TOKEN_ENCRYPTION_KEY` (for `google_connection.refresh_token_encrypted`), `TURNSTILE_SECRET_KEY`, `NEXT_PUBLIC_TURNSTILE_SITE_KEY`, `PUBLIC_PRECONTRACT_ENABLED` (§8.1 — the public pre-contract flow's Cloudflare Turnstile keys and its independent kill switch, default disabled), `RESEND_RECEIPT_TEMPLATE_ID` (payment receipts; the Resend template is created by the business outside the repo), `HIGHLEVEL_PIT_TOKEN`, `HIGHLEVEL_LOCATION_ID`, `HIGHLEVEL_CONTRACT_WORKFLOW_ID`, `HIGHLEVEL_RECEIPT_WORKFLOW_ID` (WhatsApp; all-or-nothing per flow: shared pair + that flow's workflow id; the custom fields, Meta-approved templates and workflows are created by the business in ru42, not the repo; the WhatsApp template must not start or end with a variable).
+- Never log the HighLevel token, phone numbers, or response bodies containing personal data.
 - **`DIRECT_URL`** (local/dev only, not deployed to Vercel): Supabase's direct (non-pooled, port 5432) connection string, used exclusively by `prisma.config.ts` for `prisma migrate`/`db push`/introspection. `DATABASE_URL` (Supabase's transaction pooler, port 6543) is what the running app actually connects with (see `src/lib/prisma.ts`) and is the one configured in Vercel — the pooler doesn't hold the session-level locks Prisma Migrate needs, so Migrate must always go through the direct connection instead.
 
 ## 12. Resolved decisions log
@@ -396,7 +400,8 @@ No open questions remain. The following decisions were confirmed and are reflect
 5. **Cancellation reason** — free text field (§6.4).
 6. **User login has no Google sign-in** (corrected 2026-09-05, during Sprint 2 implementation) — email + password only, via the Auth.js Credentials provider. Accounts are created exclusively by a `super` user through the user management CRUD (§5, §14); there is no self-service registration. This was a drafting error in the original spec, which called for an additional Google sign-in option for users — dropped in favor of a single, `super`-controlled account-creation path. `users.password_hash` is required as a result (§6.1).
 7. **Clients may create their own pre-contract** (added 2026-10-10, change `public-precontract`) — the §2 non-goal "Client self-service portal" is retracted to the extent of exactly ONE anonymous write endpoint: the `/precontrato` flow (§8.1), where a visitor assembles a cart from the single `is_public` price list and submits it. The result is an ordinary `pre_contract` row owned by a seeded house user ("Cliente (web)"), so §5's `createdById` scoping applies unchanged and only `super` sees these contracts. Every amount is server-derived — `discount` and `extra_charge` are always null and `deposit` is always the §6.4 threshold rule — because the anonymous payload declares no amount fields at all. Cloudflare Turnstile gates the submission. No client account, no login, no self-service registration and no payment collection were added: §4.3 and item 6 above stand unchanged.
-8. **Payment receipts** (added 2026-11-02, change `payment-receipt`) — receipts are delivered by email (JPG attached) and WhatsApp (a link to a public viewer, because ManyChat's API cannot upload a file), never to Drive; staff download them on demand, including for cancelled contracts. Payments registered before this change have no receipt.
+8. **Payment receipts** (added 2026-11-02, change `payment-receipt`) — receipts are delivered by email (JPG attached) and WhatsApp (a link to a public viewer; media sends only work inside HighLevel/WhatsApp's 24 h window), never to Drive; staff download them on demand, including for cancelled contracts. Payments registered before this change have no receipt.
+9. **ManyChat replaced by HighLevel (ru42)** (2026-11-03, change `highlevel-whatsapp`) — the client moved its CRM to ru42; ManyChat code is deleted entirely (no provider switch). WhatsApp is a link sent via contact upsert + enrollment in dedicated workflows (Meta-approved Utility templates, es_MX). Marketing owns all pre-existing ru42 data; the integration only writes its own 8 custom fields to existing contacts matched by phone (`+52` + 10 digits) and never name/email/tags (name only when the contact is newly created). Contract WhatsApp gets `contracts.whatsapp_sent` and retry like email; receipt WhatsApp is un-paused. Supersedes decision 8's ManyChat wording and the 2026-11-03 receipt-pause note.
 
 ## 13. Implementation roadmap
 
@@ -421,7 +426,7 @@ The 6-step wizard from §8, fully functional client-side through step 5. Step 6 
 Flow B OAuth (§4.3, kept separate from login), `google_connection` table, Drive upload and Calendar event creation wired into the confirm step, reconnect banner visible to all roles (§5) with a per-step retry action.
 
 ### Sprint 7 — Delivery: email, WhatsApp, and public viewer
-Resend integration for email. Public contract viewer page keyed by `viewer_token` (§10). WhatsApp link generation for ManyChat. Full sequential delivery pipeline with manual per-step retry, per §4.2.
+Resend integration for email. Public contract viewer page keyed by `viewer_token` (§10). WhatsApp link delivery through HighLevel (originally ManyChat). Full sequential delivery pipeline with manual per-step retry, per §4.2.
 
 ### Sprint 8 — Payments, notes, reports, calendar, and dashboard
 Payments module with `payment_status` transitions, notes per contract, filterable reports with Excel export (§9), role-scoped calendar view, dashboard indicators, and a final responsive QA pass.

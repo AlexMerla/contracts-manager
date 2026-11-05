@@ -1,5 +1,7 @@
 # Sprint 7 — Delivery: email, WhatsApp, and public viewer
 
+> Superseded 2026-11-03 by change `highlevel-whatsapp`: ManyChat was replaced by HighLevel (ru42). Tasks 4, 5, 6 and 8 refer to ManyChat historically; the current behavior is in docs/spec.md §3/§4.2/§6.4. `contracts.whatsapp_sent` now exists, resolving the open point below; the copy-link fallback (task 5) is kept.
+
 Reference: `docs/spec.md` §3 (WhatsApp delivery via ManyChat — the app only produces the link), §4.2 (status-column retry pattern), §6.4 (`contracts.emailSent`, `viewerToken`), §10 (public contract viewer).
 
 Dependency note: 1 must come first — it produces the public link the WhatsApp tasks depend on. 2-3 are the email group. 4-5 are the WhatsApp group. 6 depends on 2 and 4 being independently functional before wiring them into one sequence. 7-8 depend on 6.
@@ -29,6 +31,6 @@ Dependency note: 1 must come first — it produces the public link the WhatsApp 
   _Explicitly out of scope for sdd-apply per instructions — this is a real, user-run staging verification (real Resend delivery + real ManyChat/WhatsApp message) to be done once the Resend sending domain is verified and the ManyChat flow is confirmed live._
 
 ---
-**Open point worth deciding before or during this sprint:** unlike image/Drive/Calendar/email, the WhatsApp trigger has no status column in §6.4, so it can't be retried the same structured way. If you'd rather have parity across all five steps, add a `whatsappTriggered` boolean to `contracts` in the spec before starting task 4 — otherwise task 5's manual link is the intended safety net.
+**Open point (resolved 2026-11-03 by `highlevel-whatsapp`):** `contracts.whatsapp_sent` was added with a retry like email; the original question was whether to add a `whatsappTriggered` column for parity across all five steps, with task 5's manual link as the alternative safety net.
 
 When all 8 tasks are checked off, stop. Do not start Sprint 8 work until `specs/sprint-08-payments-reports/tasks.md` exists.
