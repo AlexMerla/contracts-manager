@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "db:seed": "tsx prisma/seed.ts",
+    "db:migrate:test": "node scripts/with-test-env.mjs prisma migrate deploy",
     "contract-image:qa": "tsx src/lib/contract-template/qa/generate-samples.ts",
     "postinstall": "prisma generate"
   },

@@ -155,7 +155,11 @@ describe("registerPayment / addNote", () => {
 
     expect(folioA).toMatch(/^PG-\d{4}$/);
     expect(folioB).toMatch(/^PG-\d{4}$/);
-    expect(Number(folioB.slice(3))).toBe(Number(folioA.slice(3)) + 1);
+    // Strictly greater, not exactly +1: other test files register payments in
+    // parallel workers against the same database and can take a folio in
+    // between. The exact max+1 rule is covered without a database by
+    // nextPaymentFolio's own unit tests.
+    expect(Number(folioB.slice(3))).toBeGreaterThan(Number(folioA.slice(3)));
   });
 
   // Spec: the full pending -> deposit_paid -> partial -> paid_in_full
