@@ -57,6 +57,7 @@ const contractMessage = {
   clientName: "María Pérez",
   folio: "03142",
   viewerUrl: `https://contratos.ejemplo.com/contracts/view/${VIEWER_TOKEN}`,
+  viewerToken: VIEWER_TOKEN,
 };
 
 const receiptMessage = {
@@ -66,6 +67,7 @@ const receiptMessage = {
   amountCents: 150_000,
   balanceCents: 250_000,
   receiptUrl: "https://contratos.ejemplo.com/comprobantes/view/rcpt-tok",
+  receiptToken: "rcpt-tok",
 };
 
 let fetchMock: ReturnType<typeof vi.fn>;
@@ -120,6 +122,7 @@ describe("sendContractWhatsAppMessage", () => {
           { key: "contrato_cliente", field_value: "María Pérez" },
           { key: "contrato_folio", field_value: "03142" },
           { key: "contrato_link", field_value: contractMessage.viewerUrl },
+          { key: "contrato_token", field_value: VIEWER_TOKEN },
         ],
       },
     });
@@ -216,6 +219,7 @@ describe("sendReceiptWhatsAppMessage", () => {
         { key: "comprobante_monto", field_value: "$1,500.00 MXN" },
         { key: "comprobante_saldo", field_value: "$2,500.00 MXN" },
         { key: "comprobante_link", field_value: receiptMessage.receiptUrl },
+        { key: "comprobante_token", field_value: "rcpt-tok" },
       ],
     });
     expect(enroll?.path).toBe("/contacts/c-old/workflow/wf-receipt");

@@ -104,6 +104,7 @@ describe("sendPaymentReceipt", () => {
       amountCents: 500_000,
       balanceCents: 800_000,
       receiptUrl: `https://contratos.ejemplo.com/comprobantes/view/${TOKEN}`,
+      receiptToken: TOKEN,
     });
     expect(message.receiptUrl).not.toContain(PAYMENT_ID);
     expect(mocks.update).toHaveBeenCalledWith({ where: { id: PAYMENT_ID }, data: { receiptWhatsappSent: true } });

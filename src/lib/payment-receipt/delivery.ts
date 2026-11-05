@@ -125,6 +125,7 @@ async function sendWhatsAppStep(paymentId: string): Promise<ContractDeliveryStep
     amountCents: snapshot.amountCents,
     balanceCents: snapshot.balanceCents,
     receiptUrl,
+    receiptToken,
   });
   if (!sent.ok) {
     return sent;

@@ -38,6 +38,8 @@ export const CONTRACT_FIELD_KEYS = {
   clientName: "contrato_cliente",
   folio: "contrato_folio",
   link: "contrato_link",
+  /** Bare viewerToken: the template's URL button appends it to a fixed base. */
+  token: "contrato_token",
 } as const;
 
 export const RECEIPT_FIELD_KEYS = {
@@ -46,6 +48,8 @@ export const RECEIPT_FIELD_KEYS = {
   amount: "comprobante_monto",
   balance: "comprobante_saldo",
   link: "comprobante_link",
+  /** Bare receiptToken: the template's URL button appends it to a fixed base. */
+  token: "comprobante_token",
 } as const;
 
 /** "$1,500.00 MXN" — the same `formatMoney` the receipt image and email use,
@@ -121,6 +125,8 @@ export interface ContractWhatsAppMessage {
   folio: string;
   /** Absolute public viewer URL, built from `viewerToken` (spec §10). */
   viewerUrl: string;
+  /** The same viewerToken, bare, for the template's URL button (spec §10). */
+  viewerToken: string;
 }
 
 /** Plain data in, no database — unit-tested against a mocked `fetch`. */
@@ -135,6 +141,7 @@ export async function sendContractWhatsAppMessage(
       { key: CONTRACT_FIELD_KEYS.clientName, field_value: message.clientName },
       { key: CONTRACT_FIELD_KEYS.folio, field_value: message.folio },
       { key: CONTRACT_FIELD_KEYS.link, field_value: message.viewerUrl },
+      { key: CONTRACT_FIELD_KEYS.token, field_value: message.viewerToken },
     ],
   });
 }
@@ -169,6 +176,7 @@ export async function sendContractWhatsApp(contractId: string): Promise<Contract
     clientName: contract.clientName,
     folio: contract.folio,
     viewerUrl,
+    viewerToken: contract.viewerToken,
   });
   if (!sent.ok) {
     return sent;
@@ -187,6 +195,8 @@ export interface ReceiptWhatsAppMessage {
   balanceCents: number;
   /** Absolute public receipt URL, built from `receiptToken` (spec §10). */
   receiptUrl: string;
+  /** The same receiptToken, bare, for the template's URL button (spec §10). */
+  receiptToken: string;
 }
 
 /** Plain data in, no database. The caller (payment-receipt/delivery.ts)
@@ -204,6 +214,7 @@ export async function sendReceiptWhatsAppMessage(
       { key: RECEIPT_FIELD_KEYS.amount, field_value: whatsAppMoney(message.amountCents) },
       { key: RECEIPT_FIELD_KEYS.balance, field_value: whatsAppBalance(message.balanceCents) },
       { key: RECEIPT_FIELD_KEYS.link, field_value: message.receiptUrl },
+      { key: RECEIPT_FIELD_KEYS.token, field_value: message.receiptToken },
     ],
   });
 }
