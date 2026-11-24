@@ -11,7 +11,9 @@ import { PUBLIC_PRECONTRACT_PREFIX } from "@/lib/public-precontract";
 // hidden in the UI", extended here to "not only in middleware either").
 // The prefix list is derived from src/lib/navigation.ts so the sidebar and
 // this guard can never disagree about which routes are super-only.
-const PUBLIC_PATHS = ["/login"];
+// keep-alive: called by Vercel Cron, which has no session. Exact path, not a
+// prefix; the route itself rejects anything without the CRON_SECRET bearer.
+const PUBLIC_PATHS = ["/login", "/api/keep-alive"];
 
 // Sprint-07 task 1 / spec §10: the contract viewer (and the route handler
 // that serves its JPEG) is reached by clients who have no account at all, so
