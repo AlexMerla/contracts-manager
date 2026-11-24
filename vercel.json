@@ -1,4 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "crons": [{ "path": "/api/keep-alive", "schedule": "0 15 * * *" }]
+  "schedules": {
+    "supabase-keep-alive": {
+      "schedule": "0 15 * * *",
+      "path": "/api/keep-alive",
+      "requestMethod": "GET"
+    }
+  }
 }

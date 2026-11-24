@@ -70,7 +70,7 @@ describe("proxy PUBLIC_PREFIXES", () => {
     expect((result as NextResponse).headers.get("location")).toBe("https://example.com/login");
   });
 
-  // keep-alive: Vercel Cron has no session; the route gates on CRON_SECRET.
+  // keep-alive: a Vercel Schedule has no session; the route gates on CRON_SECRET.
   it("lets an anonymous GET to /api/keep-alive through, but only that exact path", () => {
     expect(middleware(fakeRequest("/api/keep-alive"))).toBeUndefined();
     for (const pathname of ["/api/keep-alive/x", "/api/health"]) {
